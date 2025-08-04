@@ -177,7 +177,7 @@ To connect an AI agent to the SSE transport instance, use the following MCP conf
 {
   "mcpServers": {
     "jupyterlab-sse": {
-      "url": "http://127.0.0.1:3000"
+      "url": "http://127.0.0.1:3000/mcp"
     }
   }
 }

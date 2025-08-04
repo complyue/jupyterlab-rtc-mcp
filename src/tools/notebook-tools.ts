@@ -26,7 +26,9 @@ export class NotebookTools {
 
       const settings = ServerConnection.makeSettings();
       const path = params.path || "";
-      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+      // Ensure proper URL construction by adding a trailing slash if path is empty
+      const contentsPath = path || "/";
+      const url = URLExt.join(settings.baseUrl, "/api/contents", contentsPath);
 
       const init: RequestInit = {
         method: "GET",
@@ -45,6 +47,7 @@ export class NotebookTools {
       try {
         response = await ServerConnection.makeRequest(url, init, settings);
       } catch (error) {
+        console.error("Network error in listNotebooks:", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -56,7 +59,8 @@ export class NotebookTools {
         try {
           data = JSON.parse(data);
         } catch (error) {
-          console.error("Not a JSON response body.", response);
+          console.error("Not a JSON response body in listNotebooks:", error);
+          console.error("Response:", response);
         }
       }
 
@@ -78,10 +82,29 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
+      console.error("Failed to list notebooks:", error);
       throw new Error(
         `Failed to list notebooks: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /**
+   * Check if a directory should be skipped when listing notebooks
+   * @param directoryName Name of the directory to check
+   * @returns True if the directory should be skipped
+   */
+  private _shouldSkipDirectory(directoryName: string): boolean {
+    // Skip common Jupyter checkpoint directories and other system directories
+    const skippedDirs = [
+      ".ipynb_checkpoints",
+      "__pycache__",
+      ".git",
+      ".vscode",
+      ".idea",
+      "node_modules",
+    ];
+    return skippedDirs.includes(directoryName);
   }
 
   /**
@@ -97,7 +120,10 @@ export class NotebookTools {
       if (contents.content) {
         for (const item of contents.content) {
           if (item.type === "directory") {
-            notebooks.push(...this._extractNotebooks(item));
+            // Skip directories that should be ignored
+            if (!this._shouldSkipDirectory(item.name)) {
+              notebooks.push(...this._extractNotebooks(item));
+            }
           } else if (item.type === "notebook") {
             notebooks.push({
               path: item.path,
@@ -164,6 +190,7 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
+        console.error("Network error in getNotebookStatus (content):", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -175,7 +202,11 @@ export class NotebookTools {
         try {
           contentData = JSON.parse(contentData);
         } catch (error) {
-          console.error("Not a JSON response body.", contentResponse);
+          console.error(
+            "Not a JSON response body in getNotebookStatus (content):",
+            error,
+          );
+          console.error("Response:", contentResponse);
         }
       }
 
@@ -206,6 +237,7 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
+        console.error("Network error in getNotebookStatus (sessions):", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -217,7 +249,11 @@ export class NotebookTools {
         try {
           sessionsData = JSON.parse(sessionsData);
         } catch (error) {
-          console.error("Not a JSON response body.", sessionsResponse);
+          console.error(
+            "Not a JSON response body in getNotebookStatus (sessions):",
+            error,
+          );
+          console.error("Response:", sessionsResponse);
         }
       }
 
@@ -268,6 +304,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
+      console.error("Failed to get notebook status:", error);
       throw new Error(
         `Failed to get notebook status: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -284,24 +321,61 @@ export class NotebookTools {
     ranges?: Array<{ start: number; end?: number }>;
   }): Promise<any> {
     try {
-      // First check if there's an active RTC session
-      const sessionStatus = await this.jupyterAdapter.queryNotebookSession({
-        path: params.path,
-      });
-      const statusData = JSON.parse(sessionStatus.content[0].text);
+      // Try to get notebook content via contents API first (no session required)
+      const { ServerConnection } = await import("@jupyterlab/services");
+      const { URLExt } = await import("@jupyterlab/coreutils");
 
-      if (statusData.status !== "connected") {
+      const settings = ServerConnection.makeSettings();
+      const url = URLExt.join(settings.baseUrl, "/api/contents", params.path);
+
+      const init: RequestInit = {
+        method: "GET",
+      };
+
+      // Add authorization header if token is provided
+      const token = process.env.JUPYTERLAB_TOKEN;
+      if (token) {
+        init.headers = {
+          ...init.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      let response: Response;
+      try {
+        response = await ServerConnection.makeRequest(url, init, settings);
+      } catch (error) {
+        console.error("Network error in readNotebookCells:", error);
         throw new Error(
-          `No active RTC session for notebook: ${params.path}. Please begin a session first using begin_nb_session.`,
+          `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
 
-      // Get the existing session
-      const session = await this.jupyterAdapter.createDocumentSession(
-        params.path,
-        "notebook",
-      );
-      const notebookContent = session.getNotebookContent();
+      let data: any = await response.text();
+
+      if (data.length > 0) {
+        try {
+          data = JSON.parse(data);
+        } catch (error) {
+          console.error(
+            "Not a JSON response body in readNotebookCells:",
+            error,
+          );
+          console.error("Response:", response);
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          `Server returned ${response.status}: ${data.message || data}`,
+        );
+      }
+
+      // Extract cells from notebook content
+      const notebookContent = data.content;
+      if (!notebookContent || !notebookContent.cells) {
+        throw new Error("Invalid notebook content or no cells found");
+      }
 
       const ranges = params.ranges || [
         { start: 0, end: notebookContent.cells.length },
@@ -313,11 +387,14 @@ export class NotebookTools {
         const end = range.end !== undefined ? range.end : start + 1;
 
         for (let i = start; i < end && i < notebookContent.cells.length; i++) {
+          const cell = notebookContent.cells[i];
           cells.push({
             index: i,
-            id: notebookContent.cells[i].id,
-            content: notebookContent.cells[i].content,
-            type: notebookContent.cells[i].type,
+            id: cell.id || `cell-${i}`, // Generate ID if not present
+            content: cell.source || "", // Jupyter uses 'source' for cell content
+            type: cell.cell_type || "code", // Jupyter uses 'cell_type'
+            execution_count: cell.execution_count,
+            outputs: cell.outputs,
           });
         }
       }
@@ -331,6 +408,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
+      console.error("Failed to read notebook cells:", error);
       throw new Error(
         `Failed to read notebook cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -388,6 +466,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
+      console.error("Failed to modify notebook cells:", error);
       throw new Error(
         `Failed to modify notebook cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -442,6 +521,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
+      console.error("Failed to insert notebook cells:", error);
       throw new Error(
         `Failed to insert notebook cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -492,6 +572,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
+      console.error("Failed to delete notebook cells:", error);
       throw new Error(
         `Failed to delete notebook cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -549,6 +630,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
+      console.error("Failed to restart notebook kernel:", error);
       throw new Error(
         `Failed to restart notebook kernel: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -592,6 +674,7 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
+        console.error("Network error in executeCells:", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -603,7 +686,8 @@ export class NotebookTools {
         try {
           sessionsData = JSON.parse(sessionsData);
         } catch (error) {
-          console.error("Not a JSON response body.", sessionsResponse);
+          console.error("Not a JSON response body in executeCells:", error);
+          console.error("Response:", sessionsResponse);
         }
       }
 
@@ -661,6 +745,7 @@ export class NotebookTools {
             settings,
           );
         } catch (error) {
+          console.error("Network error in executeCells (execute cell):", error);
           throw new Error(
             `Network error: ${error instanceof Error ? error.message : String(error)}`,
           );
@@ -673,6 +758,7 @@ export class NotebookTools {
         }
       }
     } catch (error) {
+      console.error("Failed to execute cells:", error);
       throw new Error(
         `Failed to execute cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -714,6 +800,7 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
+        console.error("Network error in restartKernel:", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -725,7 +812,8 @@ export class NotebookTools {
         try {
           sessionsData = JSON.parse(sessionsData);
         } catch (error) {
-          console.error("Not a JSON response body.", sessionsResponse);
+          console.error("Not a JSON response body in restartKernel:", error);
+          console.error("Response:", sessionsResponse);
         }
       }
 
@@ -771,6 +859,10 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
+        console.error(
+          "Network error in restartKernel (restart kernel):",
+          error,
+        );
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -782,6 +874,7 @@ export class NotebookTools {
         );
       }
     } catch (error) {
+      console.error("Failed to restart kernel:", error);
       throw new Error(
         `Failed to restart kernel: ${error instanceof Error ? error.message : String(error)}`,
       );

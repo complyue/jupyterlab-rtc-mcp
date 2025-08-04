@@ -11,17 +11,22 @@
     "build": "tsc",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write src/**/*.ts",
-    "start:sse": "node dist/index.js -sse -ip 127.0.0.1 -port 3000"
+    "start": "node dist/index.js",
+    "start:sse": "node dist/index.js -sse -ip 127.0.0.1 -port 3000",
+    "start:sse:debug": "node dist/index.js -sse -ip 127.0.0.1 -port 3000 -log debug",
+    "start:sse:custom": "node dist/index.js -sse"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.17.1",
-    "@jupyterlab/services": "^7.0.0",
     "@jupyterlab/coreutils": "^6.0.0",
-    "yjs": "^13.6.0",
+    "@jupyterlab/services": "^7.0.0",
+    "@modelcontextprotocol/sdk": "^1.17.1",
+    "express": "^4.18.2",
     "y-websocket": "^1.5.0",
+    "yjs": "^13.6.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.3",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",

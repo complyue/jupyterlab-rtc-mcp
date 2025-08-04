@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { z } from "zod";
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
 import { NotebookTools } from "../tools/notebook-tools.js";
@@ -40,7 +41,9 @@ export class JupyterLabMCPServer {
         version: "0.1.0",
       },
       {
-        capabilities: {},
+        capabilities: {
+          tools: {},
+        },
       },
     );
 
@@ -573,7 +576,7 @@ export class JupyterLabMCPServer {
    * Connect the server to a transport
    * @param transport Transport to connect to
    */
-  async connect(transport: StdioServerTransport): Promise<void> {
+  async connect(transport: Transport): Promise<void> {
     await this.server.connect(transport);
   }
 }
