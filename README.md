@@ -144,158 +144,47 @@ npm run build
 2. **WebSocket Errors**: Check network connectivity and firewall settings
 3. **Authentication Issues**: Verify tokens and permissions
 
-### Debug Mode
+### Debugging with SSE Transport
 
-Enable debug mode for detailed logging:
+For debugging purposes, you can run the server with SSE (Server-Sent Events) transport instead of the default stdio transport. This makes it easier to see debug output and errors since stdio transport hides stderr.
 
-To enable debug mode, add the `LOG_LEVEL=debug` environment variable to your MCP server configuration:
+The MCP client will connect to the SSE transport using the provided URL. The server should already be running with the SSE transport enabled and the JupyterLab environment variables set:
+
+```bash
+export JUPYTERLAB_URL="http://127.0.0.1:8888"
+export JUPYTERLAB_TOKEN="super-secret"
+export LOG_LEVEL=debug
+npm run start:sse
+```
+
+This will start the server with SSE transport on `http://127.0.0.1:3000`. You can customize the IP and port:
+
+```bash
+node dist/index.js -sse -ip 192.168.1.100 -port 8080
+```
+
+Debug mode provides detailed logging information about:
+- WebSocket connections and disconnections
+- Notebook session creation and management
+- Cell operations and execution
+- Error details and stack traces
+
+#### MCP Settings for SSE Transport
+
+To connect an AI agent to the SSE transport instance, use the following MCP configuration:
 
 ```json
 {
   "mcpServers": {
-    "jupyterlab": {
-      "command": "npx",
-      "args": ["-y", "jupyterlab-rtc-mcp"],
-      "env": {
-        "JUPYTERLAB_URL": "http://localhost:8888",
-        "JUPYTERLAB_TOKEN": "your-token-here",
-        "LOG_LEVEL": "debug"
-      }
+    "jupyterlab-sse": {
+      "url": "http://127.0.0.1:3000"
     }
   }
 }
 ```
 
-Alternatively, you can set it in your shell environment:
+Note that SSE transport is primarily intended for debugging purposes. For production use, the stdio transport is recommended as it provides better performance and security.
 
-```bash
-export LOG_LEVEL=debug
-```
-
-Debug mode provides detailed logging information about:
-- WebSocket connections and disconnections
-- Document session creation and management
-- Cell operations and execution
-- Error details and stack traces
-
-## Dependencies Supporting RTC Features
-
-### Core Dependencies
-
-1. **`@modelcontextprotocol/sdk`** (v0.5.0)
-   - **Purpose**: Provides the MCP server implementation and stdio transport
-   - **RTC Support**: Enables the server to communicate with AI agents via stdio transport
-
-2. **`@jupyterlab/services`** (v7.0.0)
-   - **Purpose**: Provides client-side APIs for interacting with JupyterLab services
-   - **RTC Support**: While not specifically designed for RTC, it provides essential APIs that enable RTC functionality:
-     - `ServerConnection.makeSettings()`: Creates connection settings for JupyterLab API
-     - `ServerConnection.makeRequest()`: Makes HTTP requests to JupyterLab endpoints
-     - `User.IManager`: Manages user identity and authentication
-   - **Key RTC Usage**: These APIs are used to:
-     - Request document sessions from the RTC collaboration endpoint (`api/collaboration/session`)
-     - Connect to WebSocket rooms for real-time collaboration
-     - Handle user authentication and identity management
-
-3. **`@jupyterlab/coreutils`** (v6.0.0)
-   - **Purpose**: Provides utility functions for JupyterLab
-   - **RTC Support**: While not specifically designed for RTC, it provides essential utilities:
-     - `URLExt.join()`: Constructs URLs to JupyterLab API endpoints
-     - `URLExt.parse()`: Parses URLs for WebSocket connections
-   - **Key RTC Usage**: These utilities are used to:
-     - Build URLs to RTC collaboration endpoints
-     - Construct WebSocket URLs for real-time synchronization
-
-### Real-time Collaboration Dependencies
-
-4. **`yjs`** (v13.6.0)
-   - **Purpose**: CRDT (Conflict-free Replicated Data Type) library for real-time collaboration
-   - **RTC Support**: Core technology enabling real-time synchronization of documents
-
-5. **`y-websocket`** (v1.5.0)
-   - **Purpose**: WebSocket provider for Yjs
-   - **RTC Support**: Enables real-time synchronization over WebSocket connections
-
-### How These Dependencies Work Together for RTC
-
-1. **MCP Protocol Layer**:
-   - `@modelcontextprotocol/sdk` handles the MCP protocol communication with AI agents
-
-2. **JupyterLab Integration Layer**:
-   - `@jupyterlab/services` provides APIs for:
-     - Requesting document sessions from RTC endpoints
-     - Managing user authentication
-     - Making HTTP requests to JupyterLab
-   - `@jupyterlab/coreutils` provides utilities for:
-     - Building URLs to RTC endpoints
-     - Constructing WebSocket URLs
-
-3. **Real-time Synchronization Layer**:
-   - `yjs` provides the CRDT data structures for shared documents
-   - `y-websocket` manages the WebSocket connection to JupyterLab's RTC server
-
-### Evidence of RTC Support in @jupyterlab/services and @jupyterlab/coreutils
-
-From the JupyterLab RTC codebase, we can see how these libraries are used:
-
-1. **Document Session Request** (from `packages/docprovider/src/requests.ts`):
-   ```typescript
-   export async function requestDocSession(
-     format: string,
-     type: string,
-     path: string
-   ): Promise<ISessionModel> {
-     const settings = ServerConnection.makeSettings(); // From @jupyterlab/services
-     const url = URLExt.join( // From @jupyterlab/coreutils
-       settings.baseUrl,
-       DOC_SESSION_URL,
-       encodeURIComponent(path)
-     );
-     // ... makes request to RTC endpoint
-   }
-   ```
-
-2. **WebSocket Provider Connection** (from `packages/docprovider/src/yprovider.ts`):
-   ```typescript
-   private async _connect(): Promise<void> {
-     const session = await requestDocSession(
-       this._format,
-       this._contentType,
-       this._path
-     );
-
-     this._yWebsocketProvider = new YWebsocketProvider(
-       this._serverUrl, // Built using URLExt from @jupyterlab/coreutils
-       `${session.format}:${session.type}:${session.fileId}`,
-       this._sharedModel.ydoc,
-       {
-         disableBc: true,
-         params: { sessionId: session.sessionId },
-         awareness: this._awareness
-       }
-     );
-     // ... sets up event handlers for real-time sync
-   }
-   ```
-
-3. **Global Awareness** (from `packages/collaboration-extension/src/collaboration.ts`):
-   ```typescript
-   const server = ServerConnection.makeSettings(); // From @jupyterlab/services
-   const url = URLExt.join(server.wsUrl, 'api/collaboration/room'); // From @jupyterlab/coreutils
-
-   new WebSocketAwarenessProvider({
-     url: url,
-     roomID: 'JupyterLab:globalAwareness',
-     awareness: awareness,
-     user: user // From @jupyterlab/services
-   });
-   ```
-
-These code examples demonstrate that while `@jupyterlab/services` and `@jupyterlab/coreutils` are not specifically designed for RTC, they provide the essential building blocks that enable RTC functionality in JupyterLab. They are used to:
-- Create connections to JupyterLab servers
-- Build URLs to RTC endpoints
-- Manage user authentication and identity
-- Make HTTP requests to RTC APIs
 
 ## License
 

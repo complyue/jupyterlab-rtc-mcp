@@ -10,10 +10,11 @@
   "scripts": {
     "build": "tsc",
     "lint": "eslint src --ext .ts",
-    "format": "prettier --write src/**/*.ts"
+    "format": "prettier --write src/**/*.ts",
+    "start:sse": "node dist/index.js -sse -ip 127.0.0.1 -port 3000"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.5.0",
+    "@modelcontextprotocol/sdk": "^1.17.1",
     "@jupyterlab/services": "^7.0.0",
     "@jupyterlab/coreutils": "^6.0.0",
     "yjs": "^13.6.0",
