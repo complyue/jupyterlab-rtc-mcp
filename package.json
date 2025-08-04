@@ -1,0 +1,49 @@
+{
+  "name": "jupyterlab-rtc-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for JupyterLab real-time collaboration",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "jupyterlab-rtc-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write src/**/*.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "@jupyterlab/services": "^7.0.0",
+    "@jupyterlab/coreutils": "^6.0.0",
+    "yjs": "^13.6.0",
+    "y-websocket": "^1.5.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "jupyterlab",
+    "mcp",
+    "ai",
+    "collaboration",
+    "real-time"
+  ],
+  "author": "Jupyter Development Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/complyue/jupyterlab-rtc-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/complyue/jupyterlab-rtc-mcp/issues"
+  },
+  "homepage": "https://github.com/complyue/jupyterlab-rtc-mcp#readme"
+}
