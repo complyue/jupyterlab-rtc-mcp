@@ -24,7 +24,9 @@ export class NotebookTools {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
 
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const path = params.path || "";
       // Ensure proper URL construction by adding a trailing slash if path is empty
       const contentsPath = path || "/";
@@ -161,7 +163,9 @@ export class NotebookTools {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
 
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
 
       // Get notebook content and metadata
       const contentUrl = URLExt.join(
@@ -325,7 +329,9 @@ export class NotebookTools {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
 
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const url = URLExt.join(settings.baseUrl, "/api/contents", params.path);
 
       const init: RequestInit = {
@@ -648,7 +654,9 @@ export class NotebookTools {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
 
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const sessionInfo = (session as any).session;
 
       // Get the kernel session for this notebook
@@ -774,7 +782,9 @@ export class NotebookTools {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
 
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const sessionInfo = (session as any).session;
 
       // Get the kernel session for this notebook

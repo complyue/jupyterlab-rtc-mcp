@@ -21,7 +21,9 @@ export class DocumentTools {
    */
   async listDocuments(params: { path?: string }): Promise<any> {
     try {
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const path = params.path || "";
       const url = settings.baseUrl + "/api/contents/" + path;
 
@@ -86,7 +88,9 @@ export class DocumentTools {
     content?: string;
   }): Promise<any> {
     try {
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const url = settings.baseUrl + "/api/contents/" + params.path;
 
       // Determine content based on document type
@@ -193,7 +197,9 @@ export class DocumentTools {
    */
   async getDocumentInfo(params: { path: string }): Promise<any> {
     try {
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const url = settings.baseUrl + "/api/contents/" + params.path;
 
       const init: RequestInit = {
@@ -256,7 +262,9 @@ export class DocumentTools {
    */
   async deleteDocument(params: { path: string }): Promise<any> {
     try {
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const url = settings.baseUrl + "/api/contents/" + params.path;
 
       const init: RequestInit = {
@@ -306,7 +314,9 @@ export class DocumentTools {
     newPath: string;
   }): Promise<any> {
     try {
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const url = settings.baseUrl + "/api/contents/" + params.path;
 
       const requestBody = {
@@ -361,7 +371,9 @@ export class DocumentTools {
    */
   async copyDocument(params: { path: string; copyPath: string }): Promise<any> {
     try {
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const url = settings.baseUrl + "/api/contents/" + params.path + "/copy";
 
       const requestBody = {
@@ -419,7 +431,9 @@ export class DocumentTools {
     content: string;
   }): Promise<any> {
     try {
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
       const url = settings.baseUrl + "/api/contents/" + params.path;
 
       // First, get the current document to determine its type and format

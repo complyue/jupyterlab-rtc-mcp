@@ -25,7 +25,9 @@ export class JupyterLabAdapter {
     this.baseUrl =
       baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
     this.token = token || process.env.JUPYTERLAB_TOKEN;
-    this.serverSettings = ServerConnection.makeSettings();
+    this.serverSettings = ServerConnection.makeSettings({
+      baseUrl: this.baseUrl,
+    });
     this.documentSessions = new Map();
   }
 
@@ -287,7 +289,7 @@ export class JupyterLabAdapter {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
 
-      const settings = ServerConnection.makeSettings();
+      const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
       const rootPath = params.root_path || "";
       const url = URLExt.join(settings.baseUrl, "/api/contents", rootPath);
 
@@ -418,7 +420,7 @@ export class JupyterLabAdapter {
     path: string,
     type: string,
   ): Promise<ISessionModel> {
-    const settings = ServerConnection.makeSettings();
+    const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
     const url = URLExt.join(
       settings.baseUrl,
       "api/collaboration/session",

@@ -32,7 +32,9 @@ export class JupyterLabWebSocketClient {
     this.baseUrl =
       baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
     this.token = token || process.env.JUPYTERLAB_TOKEN;
-    this.serverSettings = ServerConnection.makeSettings();
+    this.serverSettings = ServerConnection.makeSettings({
+      baseUrl: this.baseUrl,
+    });
     this.document = null;
     this.provider = null;
     this.connected = false;
