@@ -54,62 +54,46 @@ export class JupyterLabAdapter {
     path: string,
     type: string = "notebook",
   ): Promise<DocumentSession> {
-    try {
+    console.error(
+      `[DEBUG] Creating document session for path: ${path}, type: ${type}`,
+    );
+    console.error(`[DEBUG] Using baseUrl: ${this.baseUrl}`);
+
+    // Request a document session from JupyterLab
+    const session = await this.requestDocSession(path, type);
+    console.error(`[DEBUG] Received session: ${JSON.stringify(session)}`);
+
+    // Check if we already have a session for this document
+    if (this.documentSessions.has(session.fileId)) {
       console.error(
-        `[DEBUG] Creating document session for path: ${path}, type: ${type}`,
+        `[DEBUG] Found existing session for fileId: ${session.fileId}`,
       );
-      console.error(`[DEBUG] Using baseUrl: ${this.baseUrl}`);
-
-      // Request a document session from JupyterLab
-      const session = await this.requestDocSession(path, type);
-      console.error(`[DEBUG] Received session: ${JSON.stringify(session)}`);
-
-      // Check if we already have a session for this document
-      if (this.documentSessions.has(session.fileId)) {
-        console.error(
-          `[DEBUG] Found existing session for fileId: ${session.fileId}`,
-        );
-        const existingSession = this.documentSessions.get(session.fileId)!;
-        if (!existingSession.isConnected()) {
-          console.error(`[DEBUG] Reconnecting to existing session`);
-          await existingSession.connect();
-        }
-        return existingSession;
+      const existingSession = this.documentSessions.get(session.fileId)!;
+      if (!existingSession.isConnected()) {
+        console.error(`[DEBUG] Reconnecting to existing session`);
+        await existingSession.connect();
       }
-
-      // Create a new document session
-      console.error(
-        `[DEBUG] Creating new document session with baseUrl: ${this.baseUrl}`,
-      );
-      const documentSession = new DocumentSession(
-        session,
-        this.baseUrl,
-        this.serverSettings,
-        this.token,
-      );
-      this.documentSessions.set(session.fileId, documentSession);
-
-      // Connect to the document
-      console.error(`[DEBUG] Connecting to document session`);
-      await documentSession.connect();
-      console.error(`[DEBUG] Successfully connected to document session`);
-
-      return documentSession;
-    } catch (error) {
-      console.error(`[ERROR] Failed to create document session:`, error);
-      let errorMessage = "Unknown error";
-      if (error) {
-        if (error instanceof Error) {
-          errorMessage = error.message;
-          console.error(`[ERROR] Error stack:`, error.stack);
-        } else if (typeof error === "string") {
-          errorMessage = error;
-        } else {
-          errorMessage = JSON.stringify(error);
-        }
-      }
-      throw new Error(`Failed to create document session: ${errorMessage}`);
+      return existingSession;
     }
+
+    // Create a new document session
+    console.error(
+      `[DEBUG] Creating new document session with baseUrl: ${this.baseUrl}`,
+    );
+    const documentSession = new DocumentSession(
+      session,
+      this.baseUrl,
+      this.serverSettings,
+      this.token,
+    );
+    this.documentSessions.set(session.fileId, documentSession);
+
+    // Connect to the document
+    console.error(`[DEBUG] Connecting to document session`);
+    await documentSession.connect();
+    console.error(`[DEBUG] Successfully connected to document session`);
+
+    return documentSession;
   }
 
   /**
@@ -150,9 +134,112 @@ export class JupyterLabAdapter {
    * @returns MCP response with session information
    */
   async beginNotebookSession(params: { path: string }): Promise<any> {
-    try {
-      const session = await this.createDocumentSession(params.path, "notebook");
+    const session = await this.createDocumentSession(params.path, "notebook");
+    const sessionInfo = this.getSessionInfo(session);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              path: params.path,
+              session_id: sessionInfo.sessionId,
+              file_id: sessionInfo.fileId,
+              status: "connected",
+              message: "RTC session started successfully",
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  }
+
+  /**
+   * End an RTC session for a notebook
+   * @param params Parameters for ending a session
+   * @returns MCP response indicating success
+   */
+  async endNotebookSession(params: { path: string }): Promise<any> {
+    // Find the session for this notebook
+    let sessionToClose = null;
+    let sessionFileId = null;
+    for (const [fileId, session] of this.documentSessions) {
       const sessionInfo = this.getSessionInfo(session);
+      if (
+        sessionInfo.fileId === params.path ||
+        sessionInfo.fileId.endsWith(params.path)
+      ) {
+        sessionToClose = session;
+        sessionFileId = fileId;
+        break;
+      }
+    }
+
+    if (sessionToClose) {
+      await sessionToClose.disconnect();
+      this.documentSessions.delete(sessionFileId!);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                path: params.path,
+                status: "disconnected",
+                message: "RTC session ended successfully",
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    } else {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                path: params.path,
+                status: "not_found",
+                message: "No active RTC session found for this notebook",
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    }
+  }
+
+  /**
+   * Query the status of an RTC session for a notebook
+   * @param params Parameters for querying session status
+   * @returns MCP response with session status
+   */
+  async queryNotebookSession(params: { path: string }): Promise<any> {
+    // Find the session for this notebook
+    let foundSession = null;
+    for (const [fileId, session] of this.documentSessions) {
+      const sessionInfo = this.getSessionInfo(session);
+      if (
+        sessionInfo.fileId === params.path ||
+        sessionInfo.fileId.endsWith(params.path)
+      ) {
+        foundSession = session;
+        break;
+      }
+    }
+
+    if (foundSession) {
+      const sessionInfo = this.getSessionInfo(foundSession);
+      const notebookContent = foundSession.getNotebookContent();
 
       return {
         content: [
@@ -163,8 +250,12 @@ export class JupyterLabAdapter {
                 path: params.path,
                 session_id: sessionInfo.sessionId,
                 file_id: sessionInfo.fileId,
-                status: "connected",
-                message: "RTC session started successfully",
+                status: foundSession.isConnected()
+                  ? "connected"
+                  : "disconnected",
+                cell_count: notebookContent.cells.length,
+                last_activity: new Date().toISOString(),
+                message: "RTC session is active",
               },
               null,
               2,
@@ -172,148 +263,23 @@ export class JupyterLabAdapter {
           },
         ],
       };
-    } catch (error) {
-      throw new Error(
-        `Failed to begin notebook session: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  /**
-   * End an RTC session for a notebook
-   * @param params Parameters for ending a session
-   * @returns MCP response indicating success
-   */
-  async endNotebookSession(params: { path: string }): Promise<any> {
-    try {
-      // Find the session for this notebook
-      let sessionToClose = null;
-      let sessionFileId = null;
-      for (const [fileId, session] of this.documentSessions) {
-        const sessionInfo = this.getSessionInfo(session);
-        if (
-          sessionInfo.fileId === params.path ||
-          sessionInfo.fileId.endsWith(params.path)
-        ) {
-          sessionToClose = session;
-          sessionFileId = fileId;
-          break;
-        }
-      }
-
-      if (sessionToClose) {
-        await sessionToClose.disconnect();
-        this.documentSessions.delete(sessionFileId!);
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  path: params.path,
-                  status: "disconnected",
-                  message: "RTC session ended successfully",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      } else {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  path: params.path,
-                  status: "not_found",
-                  message: "No active RTC session found for this notebook",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
-    } catch (error) {
-      throw new Error(
-        `Failed to end notebook session: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  /**
-   * Query the status of an RTC session for a notebook
-   * @param params Parameters for querying session status
-   * @returns MCP response with session status
-   */
-  async queryNotebookSession(params: { path: string }): Promise<any> {
-    try {
-      // Find the session for this notebook
-      let foundSession = null;
-      for (const [fileId, session] of this.documentSessions) {
-        const sessionInfo = this.getSessionInfo(session);
-        if (
-          sessionInfo.fileId === params.path ||
-          sessionInfo.fileId.endsWith(params.path)
-        ) {
-          foundSession = session;
-          break;
-        }
-      }
-
-      if (foundSession) {
-        const sessionInfo = this.getSessionInfo(foundSession);
-        const notebookContent = foundSession.getNotebookContent();
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  path: params.path,
-                  session_id: sessionInfo.sessionId,
-                  file_id: sessionInfo.fileId,
-                  status: foundSession.isConnected()
-                    ? "connected"
-                    : "disconnected",
-                  cell_count: notebookContent.cells.length,
-                  last_activity: new Date().toISOString(),
-                  message: "RTC session is active",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      } else {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  path: params.path,
-                  status: "not_found",
-                  message: "No active RTC session found for this notebook",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
-    } catch (error) {
-      throw new Error(
-        `Failed to query notebook session: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } else {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                path: params.path,
+                status: "not_found",
+                message: "No active RTC session found for this notebook",
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
     }
   }
 
@@ -323,140 +289,128 @@ export class JupyterLabAdapter {
    * @returns MCP response with session status information
    */
   async queryNotebookSessions(params: { root_path?: string }): Promise<any> {
-    try {
-      const { ServerConnection } = await import("@jupyterlab/services");
-      const { URLExt } = await import("@jupyterlab/coreutils");
+    const { ServerConnection } = await import("@jupyterlab/services");
+    const { URLExt } = await import("@jupyterlab/coreutils");
 
-      const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
-      const rootPath = params.root_path || "";
-      const url = URLExt.join(settings.baseUrl, "/api/contents", rootPath);
+    const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
+    const rootPath = params.root_path || "";
+    const url = URLExt.join(settings.baseUrl, "/api/contents", rootPath);
 
-      const init: RequestInit = {
-        method: "GET",
+    const init: RequestInit = {
+      method: "GET",
+    };
+
+    // Add authorization header if token is provided
+    if (this.token) {
+      init.headers = {
+        ...init.headers,
+        Authorization: `token ${this.token}`,
       };
+    }
 
-      // Add authorization header if token is provided
-      if (this.token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${this.token}`,
-        };
-      }
+    // Add cookies if available
+    if (this.cookieManager.hasCookies()) {
+      init.headers = {
+        ...init.headers,
+        Cookie: this.cookieManager.getCookieHeader(),
+      };
+    }
 
-      // Add cookies if available
-      if (this.cookieManager.hasCookies()) {
-        init.headers = {
-          ...init.headers,
-          Cookie: this.cookieManager.getCookieHeader(),
-        };
-      }
+    let response: Response;
+    response = await ServerConnection.makeRequest(url, init, settings);
 
-      let response: Response;
+    // Store cookies from response
+    this.cookieManager.parseResponseHeaders(response.headers);
+
+    let data: any = await response.text();
+
+    if (data.length > 0) {
       try {
-        response = await ServerConnection.makeRequest(url, init, settings);
+        data = JSON.parse(data);
       } catch (error) {
-        throw new Error(
-          `Network error: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        console.error("Not a JSON response body.", response);
       }
+    }
 
-      // Store cookies from response
-      this.cookieManager.parseResponseHeaders(response.headers);
-
-      let data: any = await response.text();
-
-      if (data.length > 0) {
-        try {
-          data = JSON.parse(data);
-        } catch (error) {
-          console.error("Not a JSON response body.", response);
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          `Server returned ${response.status}: ${data.message || data}`,
-        );
-      }
-
-      // Get all notebooks in the directory
-      const notebooks = this._extractNotebooks(data);
-
-      // Check each notebook for an active session
-      const sessions = [];
-      let activeSessions = 0;
-
-      for (const notebook of notebooks) {
-        let foundSession = null;
-        for (const [fileId, session] of this.documentSessions) {
-          const sessionInfo = this.getSessionInfo(session);
-          if (
-            sessionInfo.fileId === notebook.path ||
-            sessionInfo.fileId.endsWith(notebook.path)
-          ) {
-            foundSession = session;
-            break;
-          }
-        }
-
-        if (foundSession) {
-          const sessionInfo = this.getSessionInfo(foundSession);
-          const notebookContent = foundSession.getNotebookContent();
-          const status = foundSession.isConnected()
-            ? "connected"
-            : "disconnected";
-
-          if (status === "connected") {
-            activeSessions++;
-          }
-
-          sessions.push({
-            path: notebook.path,
-            session_id: sessionInfo.sessionId,
-            file_id: sessionInfo.fileId,
-            status,
-            cell_count: notebookContent.cells.length,
-            last_activity: new Date().toISOString(),
-            message:
-              status === "connected"
-                ? "RTC session is active"
-                : "RTC session ended",
-          });
-        } else {
-          sessions.push({
-            path: notebook.path,
-            session_id: "",
-            file_id: "",
-            status: "not_found",
-            cell_count: 0,
-            last_activity: null,
-            message: "No active RTC session found for this notebook",
-          });
-        }
-      }
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                root_path: rootPath,
-                sessions,
-                total_sessions: sessions.length,
-                active_sessions: activeSessions,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    } catch (error) {
+    if (!response.ok) {
       throw new Error(
-        `Failed to query notebook sessions: ${error instanceof Error ? error.message : String(error)}`,
+        `Server returned ${response.status}: ${data.message || data}`,
       );
     }
+
+    // Get all notebooks in the directory
+    const notebooks = this._extractNotebooks(data);
+
+    // Check each notebook for an active session
+    const sessions = [];
+    let activeSessions = 0;
+
+    for (const notebook of notebooks) {
+      let foundSession = null;
+      for (const [fileId, session] of this.documentSessions) {
+        const sessionInfo = this.getSessionInfo(session);
+        if (
+          sessionInfo.fileId === notebook.path ||
+          sessionInfo.fileId.endsWith(notebook.path)
+        ) {
+          foundSession = session;
+          break;
+        }
+      }
+
+      if (foundSession) {
+        const sessionInfo = this.getSessionInfo(foundSession);
+        const notebookContent = foundSession.getNotebookContent();
+        const status = foundSession.isConnected()
+          ? "connected"
+          : "disconnected";
+
+        if (status === "connected") {
+          activeSessions++;
+        }
+
+        sessions.push({
+          path: notebook.path,
+          session_id: sessionInfo.sessionId,
+          file_id: sessionInfo.fileId,
+          status,
+          cell_count: notebookContent.cells.length,
+          last_activity: new Date().toISOString(),
+          message:
+            status === "connected"
+              ? "RTC session is active"
+              : "RTC session ended",
+        });
+      } else {
+        sessions.push({
+          path: notebook.path,
+          session_id: "",
+          file_id: "",
+          status: "not_found",
+          cell_count: 0,
+          last_activity: null,
+          message: "No active RTC session found for this notebook",
+        });
+      }
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              root_path: rootPath,
+              sessions,
+              total_sessions: sessions.length,
+              active_sessions: activeSessions,
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
   }
 
   /**
@@ -506,16 +460,10 @@ export class JupyterLabAdapter {
     }
 
     let response: Response;
-    try {
-      response = await ServerConnection.makeRequest(url, init, settings);
-      console.error(
-        `[DEBUG] Session request response status: ${response.status}`,
-      );
-    } catch (error) {
-      throw new Error(
-        `Network error: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    response = await ServerConnection.makeRequest(url, init, settings);
+    console.error(
+      `[DEBUG] Session request response status: ${response.status}`,
+    );
 
     // Store cookies from response
     this.cookieManager.parseResponseHeaders(response.headers);

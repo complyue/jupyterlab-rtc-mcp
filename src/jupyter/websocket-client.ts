@@ -54,108 +54,97 @@ export class JupyterLabWebSocketClient {
    */
   async connect(session: ISessionModel): Promise<void> {
     return new Promise((resolve, reject) => {
-      try {
-        this.session = session;
+      this.session = session;
 
-        const wsUrl = URLExt.join(
-          this.baseUrl.replace(/^http/, "ws"),
-          "api/collaboration/room",
-          `${session.format}:${session.type}:${session.fileId}`,
-        );
+      const wsUrl = URLExt.join(
+        this.baseUrl.replace(/^http/, "ws"),
+        "api/collaboration/room",
+        `${session.format}:${session.type}:${session.fileId}`,
+      );
 
-        const wsUrlWithParams = new URL(wsUrl);
-        wsUrlWithParams.searchParams.append("sessionId", session.sessionId);
+      const wsUrlWithParams = new URL(wsUrl);
+      wsUrlWithParams.searchParams.append("sessionId", session.sessionId);
 
-        // Add token if provided
-        if (this.token) {
-          wsUrlWithParams.searchParams.append("token", this.token);
-        }
-
-        // Add cookies if available
-        if (this.cookieManager.hasCookies()) {
-          const cookieHeader = this.cookieManager.getCookieHeader();
-          // For WebSocket connections, we need to pass cookies as a query parameter
-          // since WebSocket API doesn't support custom headers directly
-          wsUrlWithParams.searchParams.append(
-            "cookies",
-            encodeURIComponent(cookieHeader),
-          );
-          console.error(`[DEBUG] Using cookies for WebSocket authentication`);
-        }
-
-        // Create Yjs document
-        this.document = new Y.Doc();
-
-        // Create WebSocket provider
-        this.provider = new WebsocketProvider(
-          wsUrlWithParams.toString(),
-          `${session.format}:${session.type}:${session.fileId}`,
-          this.document,
-          {
-            connect: false,
-          },
-        );
-
-        // Set up event handlers
-        this.provider.on("status", (event: { status: string }) => {
-          if (event.status === "connected") {
-            this.connected = true;
-            this.reconnectAttempts = 0;
-            console.error(`Connected to document: ${session.fileId}`);
-            resolve();
-          }
-        });
-
-        this.provider.on("connection-close", () => {
-          this.connected = false;
-          console.error(`Disconnected from document: ${session.fileId}`);
-          this.handleReconnect();
-        });
-
-        this.provider.on("connection-error", (error: any) => {
-          console.error(
-            `WebSocket error for document ${session.fileId}:`,
-            error,
-          );
-
-          // Extract more detailed error information
-          let errorMessage = "Unknown WebSocket error";
-          if (error) {
-            if (error.message) {
-              errorMessage = error.message;
-            } else if (error.type === "error" && error.error) {
-              errorMessage = error.error.message || JSON.stringify(error.error);
-            } else if (typeof error === "string") {
-              errorMessage = error;
-            } else {
-              errorMessage = JSON.stringify(error);
-            }
-          }
-
-          console.error(
-            `Detailed WebSocket error for document ${session.fileId}:`,
-            errorMessage,
-          );
-
-          if (!this.connected) {
-            reject(new Error(`Failed to connect to document: ${errorMessage}`));
-          }
-        });
-
-        // Listen for document updates
-        this.document.on("update", (update: Uint8Array) => {
-          this.notifyUpdateCallbacks(update);
-        });
-
-        // Connect to the WebSocket server
-        this.provider.connect();
-      } catch (error) {
-        reject(
-          new Error(
-            `Failed to create WebSocket connection: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        );
+      // Add token if provided
+      if (this.token) {
+        wsUrlWithParams.searchParams.append("token", this.token);
       }
+
+      // Add cookies if available
+      if (this.cookieManager.hasCookies()) {
+        const cookieHeader = this.cookieManager.getCookieHeader();
+        // For WebSocket connections, we need to pass cookies as a query parameter
+        // since WebSocket API doesn't support custom headers directly
+        wsUrlWithParams.searchParams.append(
+          "cookies",
+          encodeURIComponent(cookieHeader),
+        );
+        console.error(`[DEBUG] Using cookies for WebSocket authentication`);
+      }
+
+      // Create Yjs document
+      this.document = new Y.Doc();
+
+      // Create WebSocket provider
+      this.provider = new WebsocketProvider(
+        wsUrlWithParams.toString(),
+        `${session.format}:${session.type}:${session.fileId}`,
+        this.document,
+        {
+          connect: false,
+        },
+      );
+
+      // Set up event handlers
+      this.provider.on("status", (event: { status: string }) => {
+        if (event.status === "connected") {
+          this.connected = true;
+          this.reconnectAttempts = 0;
+          console.error(`Connected to document: ${session.fileId}`);
+          resolve();
+        }
+      });
+
+      this.provider.on("connection-close", () => {
+        this.connected = false;
+        console.error(`Disconnected from document: ${session.fileId}`);
+        this.handleReconnect();
+      });
+
+      this.provider.on("connection-error", (error: any) => {
+        console.error(`WebSocket error for document ${session.fileId}:`, error);
+
+        // Extract more detailed error information
+        let errorMessage = "Unknown WebSocket error";
+        if (error) {
+          if (error.message) {
+            errorMessage = error.message;
+          } else if (error.type === "error" && error.error) {
+            errorMessage = error.error.message || JSON.stringify(error.error);
+          } else if (typeof error === "string") {
+            errorMessage = error;
+          } else {
+            errorMessage = JSON.stringify(error);
+          }
+        }
+
+        console.error(
+          `Detailed WebSocket error for document ${session.fileId}:`,
+          errorMessage,
+        );
+
+        if (!this.connected) {
+          reject(error);
+        }
+      });
+
+      // Listen for document updates
+      this.document.on("update", (update: Uint8Array) => {
+        this.notifyUpdateCallbacks(update);
+      });
+
+      // Connect to the WebSocket server
+      this.provider.connect();
     });
   }
 
@@ -221,7 +210,7 @@ export class JupyterLabWebSocketClient {
         Y.applyUpdate(this.document!, update);
       });
     } else {
-      throw new Error("Not connected to document");
+      throw "Not connected to document";
     }
   }
 

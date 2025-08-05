@@ -648,8 +648,12 @@ export class NotebookTools {
    * @param session Document session
    * @param cellIds Array of cell IDs to execute
    */
+  /**
+   * Execute cells in a notebook
+   * @param session Document session
+   * @param cellIds Array of cell IDs to execute
+   */
   private async executeCells(session: any, cellIds: string[]): Promise<void> {
-    try {
       // Get the kernel ID from the session
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
@@ -706,77 +710,250 @@ export class NotebookTools {
       }
 
       // Find the kernel session for this notebook
+      // Try to match by path or fileId
+      // Note: The sessionInfo.fileId is actually the notebook path in JupyterLab
       const kernelSession = sessionsData.find(
-        (s: any) => s.path === sessionInfo.fileId,
+        (s: any) =>
+          s.path === sessionInfo.fileId ||
+          s.path?.endsWith(sessionInfo.fileId) ||
+          s.notebook?.path === sessionInfo.fileId ||
+          s.notebook?.path?.endsWith(sessionInfo.fileId) ||
+          s.name === sessionInfo.fileId ||
+          s.name?.endsWith(sessionInfo.fileId),
       );
 
       if (!kernelSession || !kernelSession.kernel) {
-        throw new Error("No active kernel found for this notebook");
-      }
-
-      // Execute each cell
-      for (const cellId of cellIds) {
-        const executeUrl = URLExt.join(
-          settings.baseUrl,
-          "/api/kernels",
-          kernelSession.kernel.id,
-          "execute",
+        // Try to start a new kernel for the notebook
+        console.error(
+          `[DEBUG] No active kernel found, attempting to start a new kernel for ${sessionInfo.fileId}`,
         );
 
-        const executeInit: RequestInit = {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            code: this.getCellContent(session, cellId),
-            silent: false,
-            store_history: true,
-            user_expressions: {},
-            allow_stdin: false,
-            stop_on_error: false,
-          }),
-        };
-
-        if (token) {
-          executeInit.headers = {
-            ...executeInit.headers,
-            Authorization: `token ${token}`,
-          };
-        }
-
-        let executeResponse: Response;
         try {
-          executeResponse = await ServerConnection.makeRequest(
-            executeUrl,
-            executeInit,
+          // First, let's get the notebook content to ensure it exists
+          const { URLExt } = await import("@jupyterlab/coreutils");
+
+          const contentUrl = URLExt.join(
+            settings.baseUrl,
+            "/api/contents",
+            sessionInfo.fileId,
+          );
+          const contentInit: RequestInit = {
+            method: "GET",
+          };
+
+          if (token) {
+            contentInit.headers = {
+              ...contentInit.headers,
+              Authorization: `token ${token}`,
+            };
+          }
+
+          const contentResponse = await ServerConnection.makeRequest(
+            contentUrl,
+            contentInit,
             settings,
           );
-        } catch (error) {
-          console.error("Network error in executeCells (execute cell):", error);
-          throw new Error(
-            `Network error: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
 
-        if (!executeResponse.ok) {
+          if (!contentResponse.ok) {
+            throw new Error(
+              `Failed to get notebook content: ${contentResponse.status} ${contentResponse.statusText}`,
+            );
+          }
+
+          // Create a new session for the notebook
+          const newSessionUrl = URLExt.join(settings.baseUrl, "/api/sessions");
+          const newSessionInit: RequestInit = {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              path: sessionInfo.fileId,
+              type: "notebook",
+              kernel: {
+                name: "python3", // Default kernel, can be made configurable
+              },
+            }),
+          };
+
+          if (token) {
+            newSessionInit.headers = {
+              ...newSessionInit.headers,
+              Authorization: `token ${token}`,
+            };
+          }
+
+          console.error(
+            `[DEBUG] Creating new session for notebook: ${sessionInfo.fileId}`,
+          );
+
+          const newSessionResponse = await ServerConnection.makeRequest(
+            newSessionUrl,
+            newSessionInit,
+            settings,
+          );
+
+          if (!newSessionResponse.ok) {
+            const errorText = await newSessionResponse.text();
+            console.error(`[DEBUG] Session creation failed: ${errorText}`);
+            throw new Error(
+              `Failed to create new kernel session: ${newSessionResponse.status} ${newSessionResponse.statusText}`,
+            );
+          }
+
+          const newSessionData = await newSessionResponse.json();
+          console.error(
+            `[DEBUG] New session created: ${JSON.stringify(newSessionData)}`,
+          );
+
+          if (!newSessionData.kernel) {
+            throw new Error("New session created but no kernel was started");
+          }
+
+          // Use the new kernel session
+          const newKernelSession = {
+            ...newSessionData,
+            kernel: newSessionData.kernel,
+          };
+
+          // Execute cells with the new kernel
+          await this.executeCellsWithKernel(
+            session,
+            cellIds,
+            newKernelSession,
+            settings,
+            token,
+          );
+          return;
+        } catch (kernelError) {
+          console.error("Failed to start new kernel:", kernelError);
           throw new Error(
-            `Failed to execute cell: ${executeResponse.status} ${executeResponse.statusText}`,
+            `No active kernel found for this notebook and failed to start a new one: ${kernelError instanceof Error ? kernelError.message : String(kernelError)}`,
           );
         }
       }
-    } catch (error) {
-      console.error("Failed to execute cells:", error);
-      throw new Error(
-        `Failed to execute cells: ${error instanceof Error ? error.message : String(error)}`,
+
+      // Execute cells with the existing kernel
+      await this.executeCellsWithKernel(
+        session,
+        cellIds,
+        kernelSession,
+        settings,
+        token,
       );
-    }
   }
 
   /**
-   * Restart the kernel for a notebook session
+   * Execute cells with a specific kernel
    * @param session Document session
+   * @param cellIds Array of cell IDs to execute
+   * @param kernelSession Kernel session to use
+   * @param settings Server settings
+   * @param token Authorization token
    */
+  private async executeCellsWithKernel(
+    session: any,
+    cellIds: string[],
+    kernelSession: any,
+    settings: any,
+    token: string | undefined,
+  ): Promise<void> {
+    const { URLExt } = await import("@jupyterlab/coreutils");
+    const { ServerConnection } = await import("@jupyterlab/services");
+
+    // Check if kernel session and kernel are valid
+    if (!kernelSession || !kernelSession.kernel || !kernelSession.kernel.id) {
+      throw new Error("Invalid kernel session or kernel ID");
+    }
+
+    console.error(
+      `[DEBUG] Executing ${cellIds.length} cells with kernel: ${kernelSession.kernel.id}`,
+    );
+
+    // Execute each cell
+    for (const cellId of cellIds) {
+      const cellContent = this.getCellContent(session, cellId);
+      console.error(
+        `[DEBUG] Executing cell ${cellId} with content: ${cellContent.substring(0, 100)}...`,
+      );
+
+      const executeUrl = URLExt.join(
+        settings.baseUrl,
+        "/api/kernels",
+        kernelSession.kernel.id,
+        "execute",
+      );
+
+      const executeInit: RequestInit = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          code: cellContent,
+          silent: false,
+          store_history: true,
+          user_expressions: {},
+          allow_stdin: false,
+          stop_on_error: false,
+        }),
+      };
+
+      if (token) {
+        executeInit.headers = {
+          ...executeInit.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      let executeResponse: Response;
+      try {
+        executeResponse = await ServerConnection.makeRequest(
+          executeUrl,
+          executeInit,
+          settings,
+        );
+      } catch (error) {
+        console.error(`[DEBUG] Network error executing cell ${cellId}:`, error);
+        throw new Error(
+          `Network error executing cell ${cellId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      if (!executeResponse.ok) {
+        const errorText = await executeResponse.text();
+        console.error(
+          `[DEBUG] Cell execution failed for ${cellId}:`,
+          errorText,
+        );
+        throw new Error(
+          `Failed to execute cell ${cellId}: ${executeResponse.status} ${executeResponse.statusText} - ${errorText}`,
+        );
+      }
+
+      // Get the execution response to check for errors
+      const responseText = await executeResponse.text();
+      try {
+        const responseData = JSON.parse(responseText);
+        if (responseData.status === "error") {
+          console.error(
+            `[DEBUG] Cell execution returned error for ${cellId}:`,
+            responseData,
+          );
+          throw new Error(
+            `Cell execution error for ${cellId}: ${responseData.evalue || "Unknown error"}`,
+          );
+        }
+      } catch (parseError) {
+        // If we can't parse the response, it might not be JSON, which is okay
+        console.error(
+          `[DEBUG] Could not parse execution response for cell ${cellId} as JSON`,
+        );
+      }
+
+      console.error(`[DEBUG] Successfully executed cell ${cellId}`);
+    }
+  }
   private async restartKernel(session: any): Promise<void> {
     try {
       const { ServerConnection } = await import("@jupyterlab/services");
@@ -834,8 +1011,13 @@ export class NotebookTools {
       }
 
       // Find the kernel session for this notebook
+      // Try to match by path or fileId
       const kernelSession = sessionsData.find(
-        (s: any) => s.path === sessionInfo.fileId,
+        (s: any) =>
+          s.path === sessionInfo.fileId ||
+          s.path?.endsWith(sessionInfo.fileId) ||
+          s.notebook?.path === sessionInfo.fileId ||
+          s.notebook?.path?.endsWith(sessionInfo.fileId),
       );
 
       if (!kernelSession || !kernelSession.kernel) {
@@ -898,8 +1080,36 @@ export class NotebookTools {
    * @returns Cell content
    */
   private getCellContent(session: any, cellId: string): string {
-    const notebookContent = session.getNotebookContent();
-    const cell = notebookContent.cells.find((c: any) => c.id === cellId);
-    return cell ? cell.content : "";
+    try {
+      if (!session || typeof session.getNotebookContent !== "function") {
+        throw new Error(
+          "Invalid session or session does not have getNotebookContent method",
+        );
+      }
+
+      const notebookContent = session.getNotebookContent();
+
+      if (
+        !notebookContent ||
+        !notebookContent.cells ||
+        !Array.isArray(notebookContent.cells)
+      ) {
+        throw new Error("Invalid notebook content or cells array");
+      }
+
+      const cell = notebookContent.cells.find((c: any) => c.id === cellId);
+
+      if (!cell) {
+        console.error(`[DEBUG] Cell with ID ${cellId} not found in notebook`);
+        return "";
+      }
+
+      return cell.content || "";
+    } catch (error) {
+      console.error(`[DEBUG] Error getting cell content for ${cellId}:`, error);
+      throw new Error(
+        `Failed to get cell content for ${cellId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }

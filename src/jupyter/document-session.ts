@@ -47,6 +47,9 @@ export class DocumentSession {
     this.updateCallbacks = new Set();
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
+
+    // Initialize document structure immediately
+    this.initializeDocumentStructure();
   }
 
   /**
@@ -54,125 +57,110 @@ export class DocumentSession {
    */
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      try {
-        const wsUrl = URLExt.join(
-          this.baseUrl.replace(/^http/, "ws"),
-          "api/collaboration/room",
-          `${this.session.format}:${this.session.type}:${this.session.fileId}`,
-        );
+      const wsUrl = URLExt.join(
+        this.baseUrl.replace(/^http/, "ws"),
+        "api/collaboration/room",
+        `${this.session.format}:${this.session.type}:${this.session.fileId}`,
+      );
 
-        const wsUrlWithParams = new URL(wsUrl);
+      const wsUrlWithParams = new URL(wsUrl);
+      wsUrlWithParams.searchParams.append("sessionId", this.session.sessionId);
+
+      // Add token if provided
+      if (this.token) {
+        wsUrlWithParams.searchParams.append("token", this.token);
+        console.error(
+          `[DEBUG] Using token for authentication: ${this.token.substring(0, 10)}...`,
+        );
+      } else {
+        console.error(`[DEBUG] No token provided for authentication`);
+      }
+
+      // Add cookies if available
+      if (this.cookieManager.hasCookies()) {
+        const cookieHeader = this.cookieManager.getCookieHeader();
+        // For WebSocket connections, we need to pass cookies as a query parameter
+        // since WebSocket API doesn't support custom headers directly
         wsUrlWithParams.searchParams.append(
-          "sessionId",
-          this.session.sessionId,
+          "cookies",
+          encodeURIComponent(cookieHeader),
+        );
+        console.error(`[DEBUG] Using cookies for WebSocket authentication`);
+      }
+
+      console.error(
+        `[DEBUG] Attempting WebSocket connection to: ${wsUrlWithParams.toString()}`,
+      );
+
+      // Create WebSocket provider
+      this.provider = new WebsocketProvider(
+        wsUrlWithParams.toString(),
+        `${this.session.format}:${this.session.type}:${this.session.fileId}`,
+        this.document,
+        {
+          connect: false,
+        },
+      );
+
+      // Set up event handlers
+      this.provider.on("status", (event: { status: string }) => {
+        if (event.status === "connected") {
+          this.connected = true;
+          this.reconnectAttempts = 0;
+          console.error(`Connected to document: ${this.session.fileId}`);
+          resolve();
+        }
+      });
+
+      this.provider.on("connection-close", () => {
+        this.connected = false;
+        console.error(`Disconnected from document: ${this.session.fileId}`);
+        this.handleReconnect();
+      });
+
+      this.provider.on("connection-error", (error: any) => {
+        console.error(
+          `WebSocket error for document ${this.session.fileId}:`,
+          error,
         );
 
-        // Add token if provided
-        if (this.token) {
-          wsUrlWithParams.searchParams.append("token", this.token);
-          console.error(
-            `[DEBUG] Using token for authentication: ${this.token.substring(0, 10)}...`,
-          );
-        } else {
-          console.error(`[DEBUG] No token provided for authentication`);
-        }
-
-        // Add cookies if available
-        if (this.cookieManager.hasCookies()) {
-          const cookieHeader = this.cookieManager.getCookieHeader();
-          // For WebSocket connections, we need to pass cookies as a query parameter
-          // since WebSocket API doesn't support custom headers directly
-          wsUrlWithParams.searchParams.append(
-            "cookies",
-            encodeURIComponent(cookieHeader),
-          );
-          console.error(`[DEBUG] Using cookies for WebSocket authentication`);
+        // Extract more detailed error information
+        let errorMessage = "Unknown WebSocket error";
+        if (error) {
+          if (error.message) {
+            errorMessage = error.message;
+          } else if (error.type === "error" && error.error) {
+            errorMessage = error.error.message || JSON.stringify(error.error);
+          } else if (typeof error === "string") {
+            errorMessage = error;
+          } else {
+            errorMessage = JSON.stringify(error);
+          }
         }
 
         console.error(
-          `[DEBUG] Attempting WebSocket connection to: ${wsUrlWithParams.toString()}`,
+          `Detailed WebSocket error for document ${this.session.fileId}:`,
+          errorMessage,
         );
 
-        // Create WebSocket provider
-        this.provider = new WebsocketProvider(
-          wsUrlWithParams.toString(),
-          `${this.session.format}:${this.session.type}:${this.session.fileId}`,
-          this.document,
-          {
-            connect: false,
-          },
-        );
+        // Try to get more information about the WebSocket connection attempt
+        console.error(`[DEBUG] WebSocket URL: ${wsUrlWithParams.toString()}`);
+        console.error(`[DEBUG] Base URL: ${this.baseUrl}`);
+        console.error(`[DEBUG] Session ID: ${this.session.sessionId}`);
+        console.error(`[DEBUG] File ID: ${this.session.fileId}`);
 
-        // Set up event handlers
-        this.provider.on("status", (event: { status: string }) => {
-          if (event.status === "connected") {
-            this.connected = true;
-            this.reconnectAttempts = 0;
-            console.error(`Connected to document: ${this.session.fileId}`);
-            resolve();
-          }
-        });
+        if (!this.connected) {
+          reject(error);
+        }
+      });
 
-        this.provider.on("connection-close", () => {
-          this.connected = false;
-          console.error(`Disconnected from document: ${this.session.fileId}`);
-          this.handleReconnect();
-          this.provider?.on("connection-error", (error: any) => {
-            console.error(
-              `WebSocket error for document ${this.session.fileId}:`,
-              error,
-            );
+      // Listen for document updates
+      this.document.on("update", (update: Uint8Array) => {
+        this.notifyUpdateCallbacks(update);
+      });
 
-            // Extract more detailed error information
-            let errorMessage = "Unknown WebSocket error";
-            if (error) {
-              if (error.message) {
-                errorMessage = error.message;
-              } else if (error.type === "error" && error.error) {
-                errorMessage =
-                  error.error.message || JSON.stringify(error.error);
-              } else if (typeof error === "string") {
-                errorMessage = error;
-              } else {
-                errorMessage = JSON.stringify(error);
-              }
-            }
-
-            console.error(
-              `Detailed WebSocket error for document ${this.session.fileId}:`,
-              errorMessage,
-            );
-
-            // Try to get more information about the WebSocket connection attempt
-            console.error(
-              `[DEBUG] WebSocket URL: ${wsUrlWithParams.toString()}`,
-            );
-            console.error(`[DEBUG] Base URL: ${this.baseUrl}`);
-            console.error(`[DEBUG] Session ID: ${this.session.sessionId}`);
-            console.error(`[DEBUG] File ID: ${this.session.fileId}`);
-
-            if (!this.connected) {
-              reject(
-                new Error(`Failed to connect to document: ${errorMessage}`),
-              );
-            }
-          });
-        });
-
-        // Listen for document updates
-        this.document.on("update", (update: Uint8Array) => {
-          this.notifyUpdateCallbacks(update);
-        });
-
-        // Connect to the WebSocket server
-        this.provider.connect();
-      } catch (error) {
-        reject(
-          new Error(
-            `Failed to create WebSocket connection: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        );
-      }
+      // Connect to the WebSocket server
+      this.provider.connect();
     });
   }
 
@@ -216,14 +204,53 @@ export class DocumentSession {
       this.updateCallbacks.delete(callback);
     };
   }
+  /**
+   * Initialize the document structure with required maps
+   */
+  private initializeDocumentStructure(): void {
+    // Initialize document in a transaction to ensure proper Yjs type creation
+    this.document.transact(() => {
+      // Ensure the cells map exists
+      if (!this.document.getMap("cells").size) {
+        const cellsMap = this.document.getMap("cells");
+        // Initialize with empty content if needed
+        if (!cellsMap.has("initialized")) {
+          cellsMap.set("initialized", true);
+        }
+      }
+
+      // Ensure the metadata map exists
+      if (!this.document.getMap("metadata").size) {
+        const metadataMap = this.document.getMap("metadata");
+        // Initialize with basic notebook metadata
+        if (!metadataMap.has("initialized")) {
+          metadataMap.set("initialized", true);
+          metadataMap.set("kernelspec", {
+            display_name: "Python 3",
+            language: "python",
+            name: "python3",
+          });
+          metadataMap.set("language_info", {
+            name: "python",
+            version: "3.8.5",
+          });
+        }
+      }
+    });
+  }
 
   /**
    * Get the notebook content from the Yjs document
    */
   getNotebookContent(): any {
-    const cells = [];
-    const cellsMap = this.document.getMap("cells");
+    // Initialize document structure if needed
+    this.initializeDocumentStructure();
 
+    // Get the cells and metadata maps
+    const cellsMap = this.document.getMap("cells");
+    const metadataMap = this.document.getMap("metadata");
+
+    const cells = [];
     for (const [cellId, cell] of cellsMap) {
       if (cell instanceof Y.Map) {
         cells.push({
@@ -237,7 +264,7 @@ export class DocumentSession {
 
     return {
       cells,
-      metadata: this.document.getMap("metadata")?.toJSON() || {},
+      metadata: metadataMap?.toJSON() || {},
     };
   }
 
@@ -247,6 +274,9 @@ export class DocumentSession {
    * @param content New content for the cell
    */
   updateCellContent(cellId: string, content: string): void {
+    // Initialize document structure if needed
+    this.initializeDocumentStructure();
+
     const cellsMap = this.document.getMap("cells");
     let cell = cellsMap.get(cellId);
 
@@ -270,6 +300,9 @@ export class DocumentSession {
    * @returns ID of the new cell
    */
   addCell(content: string, type: string = "code", position?: number): string {
+    // Initialize document structure if needed
+    this.initializeDocumentStructure();
+
     const cellsMap = this.document.getMap("cells");
     const cellId = `cell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -316,10 +349,19 @@ export class DocumentSession {
    * @param cellId ID of the cell to delete
    */
   deleteCell(cellId: string): void {
+    // Initialize document structure if needed
+    this.initializeDocumentStructure();
+
     const cellsMap = this.document.getMap("cells");
+
+    // Check if the cell exists before deleting
+    if (!cellsMap.has(cellId)) {
+      console.warn(`Cell with ID ${cellId} not found in document`);
+      return;
+    }
+
     cellsMap.delete(cellId);
   }
-
   /**
    * Handle reconnection logic
    */
@@ -334,7 +376,7 @@ export class DocumentSession {
 
       setTimeout(() => {
         if (!this.connected) {
-          this.connect().catch((error) => {
+          this.connect().catch((error: any) => {
             let errorMessage = "Unknown reconnection error";
             if (error) {
               if (error.message) {
@@ -363,7 +405,7 @@ export class DocumentSession {
    * @param update Yjs update
    */
   private notifyUpdateCallbacks(update: Uint8Array): void {
-    this.updateCallbacks.forEach((callback) => {
+    this.updateCallbacks.forEach((callback: any) => {
       try {
         callback(update);
       } catch (error) {
