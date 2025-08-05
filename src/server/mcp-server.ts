@@ -11,7 +11,7 @@ const ToolCallRequestSchema = z.object({
   method: z.literal("tools/call"),
   params: z.object({
     name: z.string(),
-    arguments: z.record(z.any()).optional(),
+    arguments: z.record(z.string(), z.any()).optional(),
   }),
 });
 
@@ -63,136 +63,142 @@ export class JupyterLabMCPServer {
    */
   private setupRequestHandlers(): void {
     // Register tool call handler
-    this.server.setRequestHandler(ToolCallRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
-
-      try {
-        switch (name) {
-          case "begin_nb_session":
-            return await this.jupyterAdapter.beginNotebookSession(
-              args as { path: string },
-            );
-
-          case "end_nb_session":
-            return await this.jupyterAdapter.endNotebookSession(
-              args as { path: string },
-            );
-
-          case "query_nb_sessions":
-            return await this.jupyterAdapter.queryNotebookSessions(
-              args as { root_path?: string },
-            );
-
-          case "list_nbs":
-            return await this.notebookTools.listNotebooks(
-              args as { path?: string },
-            );
-
-          case "get_nb_stat":
-            return await this.notebookTools.getNotebookStatus(
-              args as { path: string },
-            );
-
-          case "read_nb_cells":
-            return await this.notebookTools.readNotebookCells(
-              args as {
-                path: string;
-                ranges?: Array<{ start: number; end?: number }>;
-              },
-            );
-
-          case "modify_nb_cells":
-            return await this.notebookTools.modifyNotebookCells(
-              args as {
-                path: string;
-                modifications: Array<{
-                  range: { start: number; end?: number };
-                  content: string;
-                }>;
-                exec?: boolean;
-              },
-            );
-
-          case "insert_nb_cells":
-            return await this.notebookTools.insertNotebookCells(
-              args as {
-                path: string;
-                position: number;
-                cells: Array<{ type?: string; content: string }>;
-                exec?: boolean;
-              },
-            );
-
-          case "delete_nb_cells":
-            return await this.notebookTools.deleteNotebookCells(
-              args as {
-                path: string;
-                ranges: Array<{ start: number; end?: number }>;
-              },
-            );
-
-          case "restart_nb_kernel":
-            return await this.notebookTools.restartNotebookKernel(
-              args as {
-                path: string;
-                clear_contents?: boolean;
-                exec?: boolean;
-              },
-            );
-
-          case "list_documents":
-            return await this.documentTools.listDocuments(
-              args as { path?: string },
-            );
-
-          case "create_document":
-            return await this.documentTools.createDocument(
-              args as { path: string; type?: string; content?: string },
-            );
-
-          case "get_document_info":
-            return await this.documentTools.getDocumentInfo(
-              args as { path: string },
-            );
-
-          case "delete_document":
-            return await this.documentTools.deleteDocument(
-              args as { path: string },
-            );
-
-          case "rename_document":
-            return await this.documentTools.renameDocument(
-              args as { path: string; newPath: string },
-            );
-
-          case "copy_document":
-            return await this.documentTools.copyDocument(
-              args as { path: string; copyPath: string },
-            );
-
-          case "modify_document":
-            return await this.documentTools.modifyDocument(
-              args as { path: string; content: string },
-            );
-
-          default:
-            throw new Error(`Unknown tool: ${name}`);
-        }
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
+    this.server.setRequestHandler(
+      ToolCallRequestSchema as any,
+      async (request) => {
+        const { name, arguments: args } = (request as any).params as {
+          name: string;
+          arguments?: any;
         };
-      }
-    });
+
+        try {
+          switch (name) {
+            case "begin_nb_session":
+              return await this.jupyterAdapter.beginNotebookSession(
+                args as { path: string },
+              );
+
+            case "end_nb_session":
+              return await this.jupyterAdapter.endNotebookSession(
+                args as { path: string },
+              );
+
+            case "query_nb_sessions":
+              return await this.jupyterAdapter.queryNotebookSessions(
+                args as { root_path?: string },
+              );
+
+            case "list_nbs":
+              return await this.notebookTools.listNotebooks(
+                args as { path?: string },
+              );
+
+            case "get_nb_stat":
+              return await this.notebookTools.getNotebookStatus(
+                args as { path: string },
+              );
+
+            case "read_nb_cells":
+              return await this.notebookTools.readNotebookCells(
+                args as {
+                  path: string;
+                  ranges?: Array<{ start: number; end?: number }>;
+                },
+              );
+
+            case "modify_nb_cells":
+              return await this.notebookTools.modifyNotebookCells(
+                args as {
+                  path: string;
+                  modifications: Array<{
+                    range: { start: number; end?: number };
+                    content: string;
+                  }>;
+                  exec?: boolean;
+                },
+              );
+
+            case "insert_nb_cells":
+              return await this.notebookTools.insertNotebookCells(
+                args as {
+                  path: string;
+                  position: number;
+                  cells: Array<{ type?: string; content: string }>;
+                  exec?: boolean;
+                },
+              );
+
+            case "delete_nb_cells":
+              return await this.notebookTools.deleteNotebookCells(
+                args as {
+                  path: string;
+                  ranges: Array<{ start: number; end?: number }>;
+                },
+              );
+
+            case "restart_nb_kernel":
+              return await this.notebookTools.restartNotebookKernel(
+                args as {
+                  path: string;
+                  clear_contents?: boolean;
+                  exec?: boolean;
+                },
+              );
+
+            case "list_documents":
+              return await this.documentTools.listDocuments(
+                args as { path?: string },
+              );
+
+            case "create_document":
+              return await this.documentTools.createDocument(
+                args as { path: string; type?: string; content?: string },
+              );
+
+            case "get_document_info":
+              return await this.documentTools.getDocumentInfo(
+                args as { path: string },
+              );
+
+            case "delete_document":
+              return await this.documentTools.deleteDocument(
+                args as { path: string },
+              );
+
+            case "rename_document":
+              return await this.documentTools.renameDocument(
+                args as { path: string; newPath: string },
+              );
+
+            case "copy_document":
+              return await this.documentTools.copyDocument(
+                args as { path: string; copyPath: string },
+              );
+
+            case "modify_document":
+              return await this.documentTools.modifyDocument(
+                args as { path: string; content: string },
+              );
+
+            default:
+              throw new Error(`Unknown tool: ${name}`);
+          }
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      },
+    );
 
     // Register tools list handler
-    this.server.setRequestHandler(ToolsListRequestSchema, async () => {
+    this.server.setRequestHandler(ToolsListRequestSchema as any, async () => {
       return {
         tools: [
           {

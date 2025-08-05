@@ -2,6 +2,7 @@ import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
+import { cookieManager } from "./cookie-manager.js";
 
 export interface ISessionModel {
   format: string;
@@ -20,6 +21,7 @@ export class JupyterLabWebSocketClient {
   private baseUrl: string;
   private serverSettings: ServerConnection.ISettings;
   private token: string | undefined;
+  private cookieManager: typeof cookieManager;
   private document: Y.Doc | null;
   private provider: WebsocketProvider | null;
   private connected: boolean;
@@ -35,6 +37,7 @@ export class JupyterLabWebSocketClient {
     this.serverSettings = ServerConnection.makeSettings({
       baseUrl: this.baseUrl,
     });
+    this.cookieManager = cookieManager;
     this.document = null;
     this.provider = null;
     this.connected = false;
@@ -68,6 +71,18 @@ export class JupyterLabWebSocketClient {
           wsUrlWithParams.searchParams.append("token", this.token);
         }
 
+        // Add cookies if available
+        if (this.cookieManager.hasCookies()) {
+          const cookieHeader = this.cookieManager.getCookieHeader();
+          // For WebSocket connections, we need to pass cookies as a query parameter
+          // since WebSocket API doesn't support custom headers directly
+          wsUrlWithParams.searchParams.append(
+            "cookies",
+            encodeURIComponent(cookieHeader),
+          );
+          console.error(`[DEBUG] Using cookies for WebSocket authentication`);
+        }
+
         // Create Yjs document
         this.document = new Y.Doc();
 
@@ -82,11 +97,13 @@ export class JupyterLabWebSocketClient {
         );
 
         // Set up event handlers
-        this.provider.on("connection-open", () => {
-          this.connected = true;
-          this.reconnectAttempts = 0;
-          console.error(`Connected to document: ${session.fileId}`);
-          resolve();
+        this.provider.on("status", (event: { status: string }) => {
+          if (event.status === "connected") {
+            this.connected = true;
+            this.reconnectAttempts = 0;
+            console.error(`Connected to document: ${session.fileId}`);
+            resolve();
+          }
         });
 
         this.provider.on("connection-close", () => {
@@ -100,12 +117,28 @@ export class JupyterLabWebSocketClient {
             `WebSocket error for document ${session.fileId}:`,
             error,
           );
+
+          // Extract more detailed error information
+          let errorMessage = "Unknown WebSocket error";
+          if (error) {
+            if (error.message) {
+              errorMessage = error.message;
+            } else if (error.type === "error" && error.error) {
+              errorMessage = error.error.message || JSON.stringify(error.error);
+            } else if (typeof error === "string") {
+              errorMessage = error;
+            } else {
+              errorMessage = JSON.stringify(error);
+            }
+          }
+
+          console.error(
+            `Detailed WebSocket error for document ${session.fileId}:`,
+            errorMessage,
+          );
+
           if (!this.connected) {
-            reject(
-              new Error(
-                `Failed to connect to document: ${error instanceof Error ? error.message : String(error)}`,
-              ),
-            );
+            reject(new Error(`Failed to connect to document: ${errorMessage}`));
           }
         });
 
@@ -207,9 +240,18 @@ export class JupyterLabWebSocketClient {
       setTimeout(() => {
         if (!this.connected && this.session) {
           this.connect(this.session).catch((error: any) => {
+            let errorMessage = "Unknown reconnection error";
+            if (error) {
+              if (error.message) {
+                errorMessage = error.message;
+              } else if (typeof error === "string") {
+                errorMessage = error;
+              } else {
+                errorMessage = JSON.stringify(error);
+              }
+            }
             console.error(
-              `Reconnection failed for document ${this.session?.fileId}:`,
-              error,
+              `Reconnection failed for document ${this.session?.fileId}: ${errorMessage}`,
             );
           });
         }

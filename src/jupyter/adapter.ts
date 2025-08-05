@@ -1,6 +1,7 @@
 import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
 import { DocumentSession } from "./document-session.js";
+import { cookieManager } from "./cookie-manager.js";
 
 export interface ISessionModel {
   format: string;
@@ -20,15 +21,27 @@ export class JupyterLabAdapter {
   private serverSettings: ServerConnection.ISettings;
   private documentSessions: Map<string, DocumentSession>;
   private token: string | undefined;
+  private cookieManager: typeof cookieManager;
 
   constructor(baseUrl?: string, token?: string) {
     this.baseUrl =
       baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
     this.token = token || process.env.JUPYTERLAB_TOKEN;
+
+    // Log token information for debugging
+    if (this.token) {
+      console.error(
+        `[DEBUG] Using JupyterLab token: ${this.token.substring(0, 10)}...`,
+      );
+    } else {
+      console.error(`[DEBUG] No JupyterLab token provided`);
+    }
+
     this.serverSettings = ServerConnection.makeSettings({
       baseUrl: this.baseUrl,
     });
     this.documentSessions = new Map();
+    this.cookieManager = cookieManager;
   }
 
   /**
@@ -42,19 +55,32 @@ export class JupyterLabAdapter {
     type: string = "notebook",
   ): Promise<DocumentSession> {
     try {
+      console.error(
+        `[DEBUG] Creating document session for path: ${path}, type: ${type}`,
+      );
+      console.error(`[DEBUG] Using baseUrl: ${this.baseUrl}`);
+
       // Request a document session from JupyterLab
       const session = await this.requestDocSession(path, type);
+      console.error(`[DEBUG] Received session: ${JSON.stringify(session)}`);
 
       // Check if we already have a session for this document
       if (this.documentSessions.has(session.fileId)) {
+        console.error(
+          `[DEBUG] Found existing session for fileId: ${session.fileId}`,
+        );
         const existingSession = this.documentSessions.get(session.fileId)!;
         if (!existingSession.isConnected()) {
+          console.error(`[DEBUG] Reconnecting to existing session`);
           await existingSession.connect();
         }
         return existingSession;
       }
 
       // Create a new document session
+      console.error(
+        `[DEBUG] Creating new document session with baseUrl: ${this.baseUrl}`,
+      );
       const documentSession = new DocumentSession(
         session,
         this.baseUrl,
@@ -64,13 +90,25 @@ export class JupyterLabAdapter {
       this.documentSessions.set(session.fileId, documentSession);
 
       // Connect to the document
+      console.error(`[DEBUG] Connecting to document session`);
       await documentSession.connect();
+      console.error(`[DEBUG] Successfully connected to document session`);
 
       return documentSession;
     } catch (error) {
-      throw new Error(
-        `Failed to create document session: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      console.error(`[ERROR] Failed to create document session:`, error);
+      let errorMessage = "Unknown error";
+      if (error) {
+        if (error instanceof Error) {
+          errorMessage = error.message;
+          console.error(`[ERROR] Error stack:`, error.stack);
+        } else if (typeof error === "string") {
+          errorMessage = error;
+        } else {
+          errorMessage = JSON.stringify(error);
+        }
+      }
+      throw new Error(`Failed to create document session: ${errorMessage}`);
     }
   }
 
@@ -305,6 +343,14 @@ export class JupyterLabAdapter {
         };
       }
 
+      // Add cookies if available
+      if (this.cookieManager.hasCookies()) {
+        init.headers = {
+          ...init.headers,
+          Cookie: this.cookieManager.getCookieHeader(),
+        };
+      }
+
       let response: Response;
       try {
         response = await ServerConnection.makeRequest(url, init, settings);
@@ -313,6 +359,9 @@ export class JupyterLabAdapter {
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
+
+      // Store cookies from response
+      this.cookieManager.parseResponseHeaders(response.headers);
 
       let data: any = await response.text();
 
@@ -427,6 +476,8 @@ export class JupyterLabAdapter {
       encodeURIComponent(path),
     );
 
+    console.error(`[DEBUG] Requesting document session from: ${url}`);
+
     const init: RequestInit = {
       method: "PUT",
       body: JSON.stringify({ format: "json", type }),
@@ -438,16 +489,37 @@ export class JupyterLabAdapter {
         ...init.headers,
         Authorization: `token ${this.token}`,
       };
+      console.error(
+        `[DEBUG] Added authorization header with token: ${this.token.substring(0, 10)}...`,
+      );
+    } else {
+      console.error(`[DEBUG] No token available for authorization header`);
+    }
+
+    // Add cookies if available
+    if (this.cookieManager.hasCookies()) {
+      init.headers = {
+        ...init.headers,
+        Cookie: this.cookieManager.getCookieHeader(),
+      };
+      console.error(`[DEBUG] Added cookies to request`);
     }
 
     let response: Response;
     try {
       response = await ServerConnection.makeRequest(url, init, settings);
+      console.error(
+        `[DEBUG] Session request response status: ${response.status}`,
+      );
     } catch (error) {
       throw new Error(
         `Network error: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+
+    // Store cookies from response
+    this.cookieManager.parseResponseHeaders(response.headers);
+    console.error(`[DEBUG] Stored cookies from response`);
 
     let data: any = await response.text();
 
