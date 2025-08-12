@@ -91,6 +91,7 @@ jupyterlab-rtc-mcp/
 ### MCP Protocol Implementation
 
 The server implements the Model Context Protocol (MCP) to communicate with AI agents. It supports stdio transport for communication, recommended for production use.
+
 ### JupyterLab Integration
 
 The server integrates with JupyterLab's RTC infrastructure through several key components:

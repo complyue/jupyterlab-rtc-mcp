@@ -4,11 +4,27 @@ A TypeScript-based Model Context Protocol (MCP) server that enables AI agents to
 
 ## Overview
 
-This MCP server uses stdio transport for communication with AI agents and integrates seamlessly with JupyterLab's WebSocket-based collaboration system, allowing AI agents to:
+This MCP server supports both stdio and HTTP transport for communication with AI agents and integrates seamlessly with JupyterLab's WebSocket-based collaboration system, allowing AI agents to:
 
 - Read and modify notebook content
 - Execute code cells
 - Collaborate with human users in real-time
+
+## Transport Options
+
+The server supports two transport modes:
+
+### 1. Stdio Transport (Production)
+- **Default mode** for production use
+- Communicates via standard input/output
+- Ideal for integration with AI agents
+- Command: `npx jupyterlab-rtc-mcp`
+
+### 2. HTTP Transport (Debugging)
+- **Debug mode** for development and testing
+- Provides HTTP endpoint with streamable JSON responses
+- Useful for debugging and manual testing
+- Command: `npx jupyterlab-rtc-mcp --transport http --port 3000`
 
 ## Features
 
@@ -27,6 +43,27 @@ This MCP server uses stdio transport for communication with AI agents and integr
 
 ## Usage
 
+### Command Line Options
+
+The server supports the following command line options:
+
+```bash
+# Use stdio transport (default, for production)
+npx jupyterlab-rtc-mcp
+
+# Use HTTP transport (for debugging)
+npx jupyterlab-rtc-mcp --transport http
+
+# Use HTTP transport on a specific port
+npx jupyterlab-rtc-mcp --transport http --port 8080
+
+# Set log level
+npx jupyterlab-rtc-mcp --log-level debug
+
+# Show help
+npx jupyterlab-rtc-mcp --help
+```
+
 ### Integrating with AI Agents
 
 To use the MCP server with an AI agent, configure the agent to use the server as an MCP provider:
@@ -44,6 +81,20 @@ To use the MCP server with an AI agent, configure the agent to use the server as
     }
   }
 }
+```
+
+### HTTP Transport Usage
+
+For debugging purposes, you can use the HTTP transport to interact with the server directly:
+
+```bash
+# Start the server with HTTP transport
+npx jupyterlab-rtc-mcp --transport http --port 3000
+
+# Then send requests to the HTTP endpoint
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
 ## Configuration
@@ -111,7 +162,8 @@ jupyterlab-rtc-mcp/
 │   ├── server/
 │   │   ├── mcp-server.ts        # MCP server implementation
 │   │   └── transport/
-│   │       └── stdio-transport.ts # Stdio transport handler
+│   │       ├── stdio-transport.ts # Stdio transport handler
+│   │       └── http-transport.ts  # HTTP transport handler
 │   ├── jupyter/
 │   │   ├── adapter.ts           # JupyterLab adapter
 │   │   ├── websocket-client.ts   # WebSocket client for JupyterLab
@@ -143,6 +195,29 @@ npm run build
 1. **Connection Errors**: Ensure JupyterLab is running and RTC is enabled
 2. **WebSocket Errors**: Check network connectivity and firewall settings
 3. **Authentication Issues**: Verify tokens and permissions
+4. **HTTP Transport Issues**:
+   - Ensure the specified port is not already in use
+   - Check CORS settings if accessing from a browser
+   - Verify the HTTP server is running by checking the console output
+
+### Debugging with HTTP Transport
+
+For debugging purposes, you can use the HTTP transport to:
+
+1. **Test MCP requests manually** using curl or Postman
+2. **Inspect request/response payloads** in browser developer tools
+3. **Monitor real-time communication** between the server and clients
+
+Example debugging session:
+```bash
+# Start server with debug logging
+npx jupyterlab-rtc-mcp --transport http --port 3000 --log-level debug
+
+# Test connection
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
 
 ## License
 
