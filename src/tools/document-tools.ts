@@ -1,5 +1,6 @@
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
 import { ServerConnection } from "@jupyterlab/services";
+import { URLExt } from "@jupyterlab/coreutils";
 
 /**
  * DocumentTools provides high-level operations for document management
@@ -25,7 +26,7 @@ export class DocumentTools {
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
       const path = params.path || "";
-      const url = settings.baseUrl + "/api/contents/" + path;
+      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
 
       const init: RequestInit = {
         method: "GET",
@@ -91,7 +92,7 @@ export class DocumentTools {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const url = settings.baseUrl + "/api/contents/" + params.path;
+      const url = URLExt.join(settings.baseUrl, "/api/contents", params.path);
 
       // Determine content based on document type
       let content;
@@ -200,7 +201,7 @@ export class DocumentTools {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const url = settings.baseUrl + "/api/contents/" + params.path;
+      const url = URLExt.join(settings.baseUrl, "/api/contents", params.path);
 
       const init: RequestInit = {
         method: "GET",
@@ -265,7 +266,7 @@ export class DocumentTools {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const url = settings.baseUrl + "/api/contents/" + params.path;
+      const url = URLExt.join(settings.baseUrl, "/api/contents", params.path);
 
       const init: RequestInit = {
         method: "DELETE",
@@ -317,7 +318,7 @@ export class DocumentTools {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const url = settings.baseUrl + "/api/contents/" + params.path;
+      const url = URLExt.join(settings.baseUrl, "/api/contents", params.path);
 
       const requestBody = {
         path: params.newPath,
@@ -374,7 +375,7 @@ export class DocumentTools {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const url = settings.baseUrl + "/api/contents/" + params.path + "/copy";
+      const url = URLExt.join(settings.baseUrl, "/api/contents", params.path, "copy");
 
       const requestBody = {
         path: params.copyPath,
@@ -434,7 +435,7 @@ export class DocumentTools {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const url = settings.baseUrl + "/api/contents/" + params.path;
+      const url = URLExt.join(settings.baseUrl, "/api/contents", params.path);
 
       // First, get the current document to determine its type and format
       const getInit: RequestInit = {
