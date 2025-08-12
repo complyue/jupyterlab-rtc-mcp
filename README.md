@@ -144,48 +144,6 @@ npm run build
 2. **WebSocket Errors**: Check network connectivity and firewall settings
 3. **Authentication Issues**: Verify tokens and permissions
 
-### Debugging with SSE Transport
-
-For debugging purposes, you can run the server with SSE (Server-Sent Events) transport instead of the default stdio transport. This makes it easier to see debug output and errors since stdio transport hides stderr.
-
-The MCP client will connect to the SSE transport using the provided URL. The server should already be running with the SSE transport enabled and the JupyterLab environment variables set:
-
-```bash
-export JUPYTERLAB_URL="http://127.0.0.1:8888"
-export JUPYTERLAB_TOKEN="super-secret"
-export LOG_LEVEL=debug
-npm run start:sse
-```
-
-This will start the server with SSE transport on `http://127.0.0.1:3000`. You can customize the IP and port:
-
-```bash
-node dist/index.js -sse -ip 192.168.1.100 -port 8080
-```
-
-Debug mode provides detailed logging information about:
-- WebSocket connections and disconnections
-- Notebook session creation and management
-- Cell operations and execution
-- Error details and stack traces
-
-#### MCP Settings for SSE Transport
-
-To connect an AI agent to the SSE transport instance, use the following MCP configuration:
-
-```json
-{
-  "mcpServers": {
-    "jupyterlab-sse": {
-      "url": "http://127.0.0.1:3000/mcp"
-    }
-  }
-}
-```
-
-Note that SSE transport is primarily intended for debugging purposes. For production use, the stdio transport is recommended as it provides better performance and security.
-
-
 ## License
 
 This project is licensed under MIT License.

@@ -13,7 +13,6 @@ jupyterlab-rtc-mcp/
 │   ├── server/
 │   │   ├── mcp-server.ts        # MCP server implementation with tool registration
 │   │   └── transport/
-│   │       ├── sse-transport.ts # SSE transport for debugging
 │   │       └── stdio-transport.ts # Stdio transport handler
 │   ├── jupyter/
 │   │   ├── adapter.ts           # JupyterLab adapter for RTC communication
@@ -29,14 +28,13 @@ jupyterlab-rtc-mcp/
 ├── DESIGN.md                   # Detailed tool specifications
 └── AGENTS.md                   # This file - AI agent guidelines
 ```
-
 ### Key Components
 
 1. **MCP Server Layer** (`src/server/mcp-server.ts`): Implements the MCP protocol, registers tools, and handles requests from AI agents.
 
 2. **JupyterLab Adapter** (`src/jupyter/adapter.ts`): Manages communication with JupyterLab's RTC infrastructure, handles document sessions, and provides an interface for AI agents.
 
-3. **Transport Layer** (`src/server/transport/`): Supports both stdio (production) and SSE (debugging) transports for communication with AI agents.
+3. **Transport Layer** (`src/server/transport/`): Supports stdio transport for communication with AI agents.
 
 4. **Tools Implementation** (`src/tools/`): Provides high-level operations for notebook and document management.
 
@@ -47,13 +45,10 @@ jupyterlab-rtc-mcp/
 - `npm run build` - Compile TypeScript source code to JavaScript in the `dist/` directory
 - `npm run lint` - Run ESLint to check code quality and style
 - `npm run format` - Format code using Prettier
-- `npm run start:sse` - Start the server with SSE transport on http://127.0.0.1:3000
-
 ### Development Environment Setup
 
 1. Install dependencies: `npm install`
 2. Build the project: `npm run build`
-3. Start the SSE server for debug `npm run start:sse`, i.e. easier to see logs
 
 ## Code Style and Conventions
 
@@ -95,11 +90,7 @@ jupyterlab-rtc-mcp/
 
 ### MCP Protocol Implementation
 
-The server implements the Model Context Protocol (MCP) to communicate with AI agents. It supports two transport mechanisms:
-
-1. **Stdio Transport** (default): Uses standard input/output for communication, recommended for production use
-2. **SSE Transport**: Uses Server-Sent Events over HTTP, primarily for debugging purposes
-
+The server implements the Model Context Protocol (MCP) to communicate with AI agents. It supports stdio transport for communication, recommended for production use.
 ### JupyterLab Integration
 
 The server integrates with JupyterLab's RTC infrastructure through several key components:
@@ -140,14 +131,6 @@ export JUPYTERLAB_TOKEN=your-token-here
 export LOG_LEVEL=debug
 ```
 
-### Command Line Arguments
-
-The server supports the following command line arguments:
-
-- `-sse` or `--sse`: Use SSE transport instead of stdio
-- `-ip` or `--host`: Set the host IP for SSE transport (default: 127.0.0.1)
-- `-port` or `--port`: Set the port for SSE transport (default: 3000)
-
 ### MCP Configuration
 
 To use the MCP server with an AI agent, configure the agent to use the server as an MCP provider:
@@ -167,18 +150,6 @@ To use the MCP server with an AI agent, configure the agent to use the server as
 }
 ```
 
-For SSE transport (debugging only):
-
-```json
-{
-  "mcpServers": {
-    "jupyterlab-sse": {
-      "url": "http://127.0.0.1:3000/mcp"
-    }
-  }
-}
-```
-
 ## Dependencies
 
 ### Core Dependencies
@@ -193,7 +164,6 @@ For SSE transport (debugging only):
 ### Development Dependencies
 
 - `typescript`: TypeScript compiler
-- `express`: Web server for SSE transport
 - `@types/node`: TypeScript definitions for Node.js
 - `@typescript-eslint/eslint-plugin`: ESLint plugin for TypeScript
 - `eslint`: JavaScript linter
@@ -209,8 +179,6 @@ For SSE transport (debugging only):
 4. **Build Errors**: Ensure all dependencies are installed and TypeScript configuration is correct
 
 ### Debugging
-
-- Use SSE transport for debugging (`npm run start:sse`)
 - Check console logs for detailed error information
 - Use browser developer tools to inspect network traffic
 - Verify JupyterLab RTC endpoints are accessible
