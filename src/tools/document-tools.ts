@@ -219,8 +219,17 @@ export class DocumentTools {
       const response = await ServerConnection.makeRequest(url, init, settings);
 
       if (!response.ok) {
+        // Try to get more error details from the response body
+        let errorDetails = "";
+        try {
+          const errorResponse = await response.text();
+          errorDetails = ` - Response body: ${errorResponse}`;
+        } catch {
+          errorDetails = " - Could not read response body";
+        }
+
         throw new Error(
-          `Server returned ${response.status}: ${response.statusText}`,
+          `Server returned ${response.status}: ${response.statusText}${errorDetails}`,
         );
       }
 
@@ -375,10 +384,14 @@ export class DocumentTools {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const url = URLExt.join(settings.baseUrl, "/api/contents", params.path, "copy");
+      const url = URLExt.join(
+        settings.baseUrl,
+        "/api/contents",
+        params.copyPath,
+      );
 
       const requestBody = {
-        path: params.copyPath,
+        copy_from: params.path,
       };
 
       const init: RequestInit = {
@@ -401,8 +414,17 @@ export class DocumentTools {
       const response = await ServerConnection.makeRequest(url, init, settings);
 
       if (!response.ok) {
+        // Try to get more error details from the response body
+        let errorDetails = "";
+        try {
+          const errorResponse = await response.text();
+          errorDetails = ` - Response body: ${errorResponse}`;
+        } catch {
+          errorDetails = " - Could not read response body";
+        }
+
         throw new Error(
-          `Server returned ${response.status}: ${response.statusText}`,
+          `Server returned ${response.status}: ${response.statusText}${errorDetails}`,
         );
       }
 
