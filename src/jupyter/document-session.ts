@@ -1,4 +1,3 @@
-import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
 import { PromiseDelegate } from "@lumino/coreutils";
 import * as Y from "yjs";
@@ -22,7 +21,6 @@ export interface ISessionModel {
 export class DocumentSession {
   private session: ISessionModel;
   private baseUrl: string;
-  private serverSettings: ServerConnection.ISettings;
   private token: string | undefined;
   private cookieManager: typeof cookieManager;
   private document: Y.Doc;
@@ -37,12 +35,10 @@ export class DocumentSession {
   constructor(
     session: ISessionModel,
     baseUrl: string,
-    serverSettings: ServerConnection.ISettings,
     token?: string,
   ) {
     this.session = session;
     this.baseUrl = baseUrl;
-    this.serverSettings = serverSettings;
     this.token = token;
     this.cookieManager = cookieManager;
     this.document = new Y.Doc();

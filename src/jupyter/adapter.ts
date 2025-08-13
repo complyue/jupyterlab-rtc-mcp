@@ -18,7 +18,6 @@ export interface ISessionModel {
  */
 export class JupyterLabAdapter {
   private baseUrl: string;
-  private serverSettings: ServerConnection.ISettings;
   private documentSessions: Map<string, DocumentSession>;
   private token: string | undefined;
   private cookieManager: typeof cookieManager;
@@ -37,9 +36,6 @@ export class JupyterLabAdapter {
       console.error(`[DEBUG] No JupyterLab token provided`);
     }
 
-    this.serverSettings = ServerConnection.makeSettings({
-      baseUrl: this.baseUrl,
-    });
     this.documentSessions = new Map();
     this.cookieManager = cookieManager;
   }
@@ -85,7 +81,6 @@ export class JupyterLabAdapter {
       const documentSession = new DocumentSession(
         session,
         this.baseUrl,
-        this.serverSettings,
         this.token,
       );
 

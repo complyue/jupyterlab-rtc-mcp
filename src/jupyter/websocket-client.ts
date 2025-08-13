@@ -1,4 +1,3 @@
-import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
@@ -19,14 +18,12 @@ export interface ISessionModel {
  */
 export class JupyterLabWebSocketClient {
   private baseUrl: string;
-  private serverSettings: ServerConnection.ISettings;
   private token: string | undefined;
   private cookieManager: typeof cookieManager;
   private document: Y.Doc | null;
   private provider: WebsocketProvider | null;
   private connected: boolean;
   private session: ISessionModel | null;
-  private updateCallbacks: Set<(update: Uint8Array) => void>;
   private reconnectAttempts: number;
   private maxReconnectAttempts: number;
 
@@ -34,15 +31,11 @@ export class JupyterLabWebSocketClient {
     this.baseUrl =
       baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
     this.token = token || process.env.JUPYTERLAB_TOKEN;
-    this.serverSettings = ServerConnection.makeSettings({
-      baseUrl: this.baseUrl,
-    });
     this.cookieManager = cookieManager;
     this.document = null;
     this.provider = null;
     this.connected = false;
     this.session = null;
-    this.updateCallbacks = new Set();
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
   }
@@ -138,11 +131,6 @@ export class JupyterLabWebSocketClient {
         }
       });
 
-      // Listen for document updates
-      this.document.on("update", (update: Uint8Array) => {
-        this.notifyUpdateCallbacks(update);
-      });
-
       // Connect to the WebSocket server
       this.provider.connect();
     });
@@ -159,7 +147,6 @@ export class JupyterLabWebSocketClient {
     this.connected = false;
     this.document = null;
     this.session = null;
-    this.updateCallbacks.clear();
   }
 
   /**
@@ -186,33 +173,6 @@ export class JupyterLabWebSocketClient {
     return this.session;
   }
 
-  /**
-   * Register a callback for document updates
-   * @param callback Function to call when document is updated
-   * @returns Function to unregister the callback
-   */
-  onUpdate(callback: (update: Uint8Array) => void): () => void {
-    this.updateCallbacks.add(callback);
-
-    // Return a function to remove the callback
-    return () => {
-      this.updateCallbacks.delete(callback);
-    };
-  }
-
-  /**
-   * Send a Yjs update to the server
-   * @param update Yjs update to send
-   */
-  sendUpdate(update: Uint8Array): void {
-    if (this.document && this.connected) {
-      this.document.transact(() => {
-        Y.applyUpdate(this.document!, update);
-      });
-    } else {
-      throw "Not connected to document";
-    }
-  }
 
   /**
    * Handle reconnection logic
@@ -252,17 +212,4 @@ export class JupyterLabWebSocketClient {
     }
   }
 
-  /**
-   * Notify all update callbacks of a document update
-   * @param update Yjs update
-   */
-  private notifyUpdateCallbacks(update: Uint8Array): void {
-    this.updateCallbacks.forEach((callback) => {
-      try {
-        callback(update);
-      } catch (error) {
-        console.error("Error in document update callback:", error);
-      }
-    });
-  }
 }
