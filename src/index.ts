@@ -13,7 +13,6 @@ import { JupyterLabHTTPTransport } from "./server/transport/http-transport.js";
  */
 
 interface ServerConfig {
-  logLevel: string;
   transport: 'stdio' | 'http';
   httpPort?: number;
 }
@@ -21,17 +20,13 @@ interface ServerConfig {
 function parseCommandLineArgs(): ServerConfig {
   const args = process.argv.slice(2);
   const config: ServerConfig = {
-    logLevel: process.env.LOG_LEVEL || 'info',
     transport: 'stdio' // Default to stdio transport
   };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    
-    if (arg === '-log' || arg === '--log-level') {
-      config.logLevel = args[i + 1];
-      i++; // Skip next argument
-    } else if (arg === '-t' || arg === '--transport') {
+
+    if (arg === '-t' || arg === '--transport') {
       const transport = args[i + 1];
       if (transport === 'stdio' || transport === 'http') {
         config.transport = transport;
@@ -52,28 +47,10 @@ function parseCommandLineArgs(): ServerConfig {
 
   return config;
 }
-function setupLogging(logLevel: string): void {
-  // Set the log level environment variable
-  process.env.LOG_LEVEL = logLevel;
-  
-  // Configure console output based on log level
-  if (logLevel === 'debug') {
-    console.error(`[DEBUG] Starting JupyterLab RTC MCP Server with log level: ${logLevel}`);
-  } else if (logLevel === 'warn') {
-    console.error(`[WARN] Starting JupyterLab RTC MCP Server with log level: ${logLevel}`);
-  } else if (logLevel === 'error') {
-    console.error(`[ERROR] Starting JupyterLab RTC MCP Server with log level: ${logLevel}`);
-  } else {
-    console.error(`[INFO] Starting JupyterLab RTC MCP Server with log level: ${logLevel}`);
-  }
-}
 
 async function main() {
   // Parse command line arguments
   const config = parseCommandLineArgs();
-  
-  // Setup logging
-  setupLogging(config.logLevel);
 
   // Create MCP server
   const server = new JupyterLabMCPServer();
@@ -91,7 +68,7 @@ async function main() {
       httpTransport.setMCPServer(server);
       await httpTransport.start();
       console.error(`[INFO] JupyterLab RTC MCP Server started successfully with HTTP transport on port ${httpTransport.getPort()}`);
-      
+
       // Handle graceful shutdown
       process.on('SIGINT', async () => {
         console.error('[INFO] Shutting down HTTP server...');

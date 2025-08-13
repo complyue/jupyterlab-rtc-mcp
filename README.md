@@ -57,9 +57,6 @@ npx jupyterlab-rtc-mcp --transport http
 # Use HTTP transport on a specific port
 npx jupyterlab-rtc-mcp --transport http --port 8080
 
-# Set log level
-npx jupyterlab-rtc-mcp --log-level debug
-
 # Show help
 npx jupyterlab-rtc-mcp --help
 ```
@@ -257,7 +254,7 @@ export JUPYTERLAB_URL=http://localhost:8888
 export JUPYTERLAB_TOKEN=your-token-here
 
 # Start server with debug logging
-npx jupyterlab-rtc-mcp --transport http --port 3000 --log-level debug
+LOG_LEVEL=debug npx jupyterlab-rtc-mcp --transport http --port 3000
 
 # Test connection
 curl -X POST http://localhost:3000/mcp \
