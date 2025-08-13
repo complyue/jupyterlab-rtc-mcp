@@ -207,6 +207,43 @@ For debugging purposes, you can use the HTTP transport to:
 1. **Test MCP requests manually** using curl or Postman
 2. **Inspect request/response payloads** in browser developer tools
 3. **Monitor real-time communication** between the server and clients
+4. **Connect with real MCP clients** using streamable HTTP transport
+5. **Use MCP Inspector** for interactive debugging
+
+#### Using MCP Inspector
+
+The MCP Inspector is a powerful tool for debugging MCP servers interactively:
+
+```bash
+# Start server with HTTP transport
+npx jupyterlab-rtc-mcp --transport http --port 3000
+
+# Connect with MCP Inspector
+npx @modelcontextprotocol/inspector
+```
+
+When prompted, configure the inspector to connect to your HTTP endpoint:
+- Transport: HTTP
+- URL: http://localhost:3000/mcp
+
+#### Configuring MCP Clients for HTTP Transport
+
+To use the HTTP transport with MCP clients, configure the client with streamable HTTP settings:
+
+```json
+{
+  "mcpServers": {
+    "jupyterlab": {
+      "type": "streamable-http",
+      "url": "http://localhost:3000/mcp",
+      "alwaysAllow": [
+        "list_nbs",
+        "list_documents"
+      ]
+    }
+  }
+}
+```
 
 Example debugging session:
 ```bash
