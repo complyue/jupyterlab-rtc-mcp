@@ -59,41 +59,62 @@ export class JupyterLabAdapter {
     );
     console.error(`[DEBUG] Using baseUrl: ${this.baseUrl}`);
 
-    // Request a document session from JupyterLab
-    const session = await this.requestDocSession(path, type);
-    console.error(`[DEBUG] Received session: ${JSON.stringify(session)}`);
+    try {
+      // Request a document session from JupyterLab
+      console.error(`[DEBUG] About to call requestDocSession`);
+      const session = await this.requestDocSession(path, type);
+      console.error(`[DEBUG] Received session: ${JSON.stringify(session)}`);
 
-    // Check if we already have a session for this document
-    if (this.documentSessions.has(session.fileId)) {
-      console.error(
-        `[DEBUG] Found existing session for fileId: ${session.fileId}`,
-      );
-      const existingSession = this.documentSessions.get(session.fileId)!;
-      if (!existingSession.isConnected()) {
-        console.error(`[DEBUG] Reconnecting to existing session`);
-        await existingSession.connect();
+      // Check if we already have a session for this document
+      if (this.documentSessions.has(session.fileId)) {
+        console.error(
+          `[DEBUG] Found existing session for fileId: ${session.fileId}`,
+        );
+        const existingSession = this.documentSessions.get(session.fileId)!;
+        if (!existingSession.isConnected()) {
+          console.error(`[DEBUG] Reconnecting to existing session`);
+          await existingSession.connect();
+        }
+        return existingSession;
       }
-      return existingSession;
+
+      // Create a new document session
+      console.error(
+        `[DEBUG] Creating new document session with baseUrl: ${this.baseUrl}`,
+      );
+      const documentSession = new DocumentSession(
+        session,
+        this.baseUrl,
+        this.serverSettings,
+        this.token,
+      );
+
+      // Store the original path for later use with contents API
+      (documentSession as any).originalPath = path;
+      console.error(
+        `[DEBUG] Stored original path: ${path} for session with fileId: ${session.fileId}`,
+      );
+
+      this.documentSessions.set(session.fileId, documentSession);
+
+      // Connect to the document
+      console.error(`[DEBUG] About to connect to document session`);
+      await documentSession.connect();
+      console.error(`[DEBUG] Successfully connected to document session`);
+
+      return documentSession;
+    } catch (error) {
+      console.error(
+        `[DEBUG] Error in createDocumentSession for path ${path}:`,
+        error,
+      );
+      console.error(`[DEBUG] Error details:`, {
+        name: (error as Error)?.name,
+        message: (error as Error)?.message,
+        stack: (error as Error)?.stack,
+      });
+      throw error;
     }
-
-    // Create a new document session
-    console.error(
-      `[DEBUG] Creating new document session with baseUrl: ${this.baseUrl}`,
-    );
-    const documentSession = new DocumentSession(
-      session,
-      this.baseUrl,
-      this.serverSettings,
-      this.token,
-    );
-    this.documentSessions.set(session.fileId, documentSession);
-
-    // Connect to the document
-    console.error(`[DEBUG] Connecting to document session`);
-    await documentSession.connect();
-    console.error(`[DEBUG] Successfully connected to document session`);
-
-    return documentSession;
   }
 
   /**

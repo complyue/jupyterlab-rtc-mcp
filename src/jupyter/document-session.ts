@@ -1,7 +1,9 @@
 import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
+import { PromiseDelegate } from "@lumino/coreutils";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
+import { YNotebook } from "@jupyter/ydoc";
 import { cookieManager } from "./cookie-manager.js";
 
 export interface ISessionModel {
@@ -24,11 +26,13 @@ export class DocumentSession {
   private token: string | undefined;
   private cookieManager: typeof cookieManager;
   private document: Y.Doc;
+  private yNotebook: YNotebook;
   private provider: WebsocketProvider | null;
   private connected: boolean;
-  private updateCallbacks: Set<(update: Uint8Array) => void>;
+  private synced: boolean;
   private reconnectAttempts: number;
   private maxReconnectAttempts: number;
+  private _connectionPromise: PromiseDelegate<void> | null;
 
   constructor(
     session: ISessionModel,
@@ -42,11 +46,13 @@ export class DocumentSession {
     this.token = token;
     this.cookieManager = cookieManager;
     this.document = new Y.Doc();
+    this.yNotebook = new YNotebook();
     this.provider = null;
     this.connected = false;
-    this.updateCallbacks = new Set();
+    this.synced = false;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
+    this._connectionPromise = null;
 
     // Initialize document structure immediately
     this.initializeDocumentStructure();
@@ -56,112 +62,121 @@ export class DocumentSession {
    * Connect to the JupyterLab WebSocket server
    */
   async connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const wsUrl = URLExt.join(
-        this.baseUrl.replace(/^http/, "ws"),
-        "api/collaboration/room",
-        `${this.session.format}:${this.session.type}:${this.session.fileId}`,
+    // If we're already connected and synchronized, return immediately
+    if (this.connected && this.synced) {
+      return;
+    }
+
+    // If we're already connecting, return the existing promise
+    if (this._connectionPromise) {
+      return this._connectionPromise.promise;
+    }
+
+    // Create a new connection promise
+    this._connectionPromise = new PromiseDelegate<void>();
+
+    const wsUrl = URLExt.join(
+      this.baseUrl.replace(/^http/, "ws"),
+      "api/collaboration/room",
+      `${this.session.format}:${this.session.type}:${this.session.fileId}`,
+    );
+
+    const wsUrlWithParams = new URL(wsUrl);
+    wsUrlWithParams.searchParams.append("sessionId", this.session.sessionId);
+
+    // Add token if provided
+    if (this.token) {
+      wsUrlWithParams.searchParams.append("token", this.token);
+      console.error(
+        `[DEBUG] Using token for authentication: ${this.token.substring(0, 10)}...`,
+      );
+    } else {
+      console.error(`[DEBUG] No token provided for authentication`);
+    }
+
+    // Add cookies if available
+    if (this.cookieManager.hasCookies()) {
+      const cookieHeader = this.cookieManager.getCookieHeader();
+      // For WebSocket connections, we need to pass cookies as a query parameter
+      // since WebSocket API doesn't support custom headers directly
+      wsUrlWithParams.searchParams.append(
+        "cookies",
+        encodeURIComponent(cookieHeader),
+      );
+      console.error(`[DEBUG] Using cookies for WebSocket authentication`);
+    }
+
+    console.error(
+      `[DEBUG] Attempting WebSocket connection to: ${wsUrlWithParams.toString()}`,
+    );
+
+    // Create WebSocket provider
+    this.provider = new WebsocketProvider(
+      wsUrlWithParams.toString(),
+      `${this.session.format}:${this.session.type}:${this.session.fileId}`,
+      this.document,
+      {
+        connect: false,
+      },
+    );
+
+    // Set up event handlers
+    this.provider.on("status", (event: { status: string }) => {
+      if (event.status === "connected") {
+        this.connected = true;
+        this.reconnectAttempts = 0;
+        console.error(`Connected to document: ${this.session.fileId}`);
+        // Don't resolve yet, wait for sync
+      }
+    });
+
+    // Handle sync event - this is crucial for proper document initialization
+    this.provider.on("sync", this._onSync);
+
+    this.provider.on("connection-close", this._onConnectionClosed);
+
+    this.provider.on("connection-error", (error: any) => {
+      console.error(
+        `WebSocket error for document ${this.session.fileId}:`,
+        error,
       );
 
-      const wsUrlWithParams = new URL(wsUrl);
-      wsUrlWithParams.searchParams.append("sessionId", this.session.sessionId);
-
-      // Add token if provided
-      if (this.token) {
-        wsUrlWithParams.searchParams.append("token", this.token);
-        console.error(
-          `[DEBUG] Using token for authentication: ${this.token.substring(0, 10)}...`,
-        );
-      } else {
-        console.error(`[DEBUG] No token provided for authentication`);
-      }
-
-      // Add cookies if available
-      if (this.cookieManager.hasCookies()) {
-        const cookieHeader = this.cookieManager.getCookieHeader();
-        // For WebSocket connections, we need to pass cookies as a query parameter
-        // since WebSocket API doesn't support custom headers directly
-        wsUrlWithParams.searchParams.append(
-          "cookies",
-          encodeURIComponent(cookieHeader),
-        );
-        console.error(`[DEBUG] Using cookies for WebSocket authentication`);
+      // Extract more detailed error information
+      let errorMessage = "Unknown WebSocket error";
+      if (error) {
+        if (error.message) {
+          errorMessage = error.message;
+        } else if (error.type === "error" && error.error) {
+          errorMessage = error.error.message || JSON.stringify(error.error);
+        } else if (typeof error === "string") {
+          errorMessage = error;
+        } else {
+          errorMessage = JSON.stringify(error);
+        }
       }
 
       console.error(
-        `[DEBUG] Attempting WebSocket connection to: ${wsUrlWithParams.toString()}`,
+        `Detailed WebSocket error for document ${this.session.fileId}:`,
+        errorMessage,
       );
 
-      // Create WebSocket provider
-      this.provider = new WebsocketProvider(
-        wsUrlWithParams.toString(),
-        `${this.session.format}:${this.session.type}:${this.session.fileId}`,
-        this.document,
-        {
-          connect: false,
-        },
-      );
+      // Try to get more information about the WebSocket connection attempt
+      console.error(`[DEBUG] WebSocket URL: ${wsUrlWithParams.toString()}`);
+      console.error(`[DEBUG] Base URL: ${this.baseUrl}`);
+      console.error(`[DEBUG] Session ID: ${this.session.sessionId}`);
+      console.error(`[DEBUG] File ID: ${this.session.fileId}`);
 
-      // Set up event handlers
-      this.provider.on("status", (event: { status: string }) => {
-        if (event.status === "connected") {
-          this.connected = true;
-          this.reconnectAttempts = 0;
-          console.error(`Connected to document: ${this.session.fileId}`);
-          resolve();
-        }
-      });
-
-      this.provider.on("connection-close", () => {
-        this.connected = false;
-        console.error(`Disconnected from document: ${this.session.fileId}`);
-        this.handleReconnect();
-      });
-
-      this.provider.on("connection-error", (error: any) => {
-        console.error(
-          `WebSocket error for document ${this.session.fileId}:`,
-          error,
-        );
-
-        // Extract more detailed error information
-        let errorMessage = "Unknown WebSocket error";
-        if (error) {
-          if (error.message) {
-            errorMessage = error.message;
-          } else if (error.type === "error" && error.error) {
-            errorMessage = error.error.message || JSON.stringify(error.error);
-          } else if (typeof error === "string") {
-            errorMessage = error;
-          } else {
-            errorMessage = JSON.stringify(error);
-          }
-        }
-
-        console.error(
-          `Detailed WebSocket error for document ${this.session.fileId}:`,
-          errorMessage,
-        );
-
-        // Try to get more information about the WebSocket connection attempt
-        console.error(`[DEBUG] WebSocket URL: ${wsUrlWithParams.toString()}`);
-        console.error(`[DEBUG] Base URL: ${this.baseUrl}`);
-        console.error(`[DEBUG] Session ID: ${this.session.sessionId}`);
-        console.error(`[DEBUG] File ID: ${this.session.fileId}`);
-
-        if (!this.connected) {
-          reject(error);
-        }
-      });
-
-      // Listen for document updates
-      this.document.on("update", (update: Uint8Array) => {
-        this.notifyUpdateCallbacks(update);
-      });
-
-      // Connect to the WebSocket server
-      this.provider.connect();
+      if (!this.connected && this._connectionPromise) {
+        this._connectionPromise.reject(error);
+        this._connectionPromise = null;
+      }
     });
+
+    // Connect to the WebSocket server
+    this.provider.connect();
+
+    // Return the connection promise
+    return this._connectionPromise.promise;
   }
 
   /**
@@ -173,8 +188,29 @@ export class DocumentSession {
       this.provider = null;
     }
     this.connected = false;
-    this.updateCallbacks.clear();
+    this.synced = false;
     console.error(`Disconnected from document: ${this.session.fileId}`);
+  }
+
+  /**
+   * Reconnect to the JupyterLab WebSocket server
+   */
+  async reconnect(): Promise<void> {
+    console.error(`[DEBUG] Reconnecting to document: ${this.session.fileId}`);
+
+    // Disconnect first if already connected
+    if (this.provider) {
+      this.provider.off("sync", this._onSync);
+      this.provider.off("connection-close", this._onConnectionClosed);
+      this.provider.destroy();
+      this.provider = null;
+    }
+
+    this.connected = false;
+    this.synced = false;
+
+    // Reconnect using the same logic as in the connect method
+    await this.connect();
   }
 
   /**
@@ -192,79 +228,179 @@ export class DocumentSession {
   }
 
   /**
-   * Register a callback for document updates
-   * @param callback Function to call when document is updated
-   * @returns Function to unregister the callback
+   * Check if the document is synchronized
    */
-  onUpdate(callback: (update: Uint8Array) => void): () => void {
-    this.updateCallbacks.add(callback);
-
-    // Return a function to remove the callback
-    return () => {
-      this.updateCallbacks.delete(callback);
-    };
+  isSynced(): boolean {
+    return this.synced;
   }
+
+  /**
+   * Ensure the document is synchronized before proceeding
+   * @returns Promise that resolves when the document is synchronized
+   */
+  async ensureSynchronized(): Promise<void> {
+    console.error(
+      `[DEBUG] ensureSynchronized() called for document: ${this.session.fileId}`,
+    );
+
+    // If already synchronized, return immediately
+    if (this.synced) {
+      console.error(`[DEBUG] Document already synchronized`);
+      return;
+    }
+
+    // If not connected, throw an error
+    if (!this.connected) {
+      throw new Error(
+        `Document session is not connected to the WebSocket server.`,
+      );
+    }
+
+    // If we have a provider but it's not synced, wait for the sync event
+    if (this.provider && !this.synced) {
+      console.error(`[DEBUG] Waiting for document synchronization...`);
+
+      return new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(
+            new Error(`Document synchronization timed out after 30 seconds.`),
+          );
+        }, 30000);
+
+        const syncHandler = (isSynced: boolean) => {
+          if (isSynced) {
+            clearTimeout(timeout);
+            this.provider?.off("sync", syncHandler);
+            console.error(`[DEBUG] Document synchronized successfully`);
+            resolve();
+          }
+        };
+
+        this.provider?.on("sync", syncHandler);
+      });
+    }
+
+    // If we don't have a provider, try to reconnect
+    if (!this.provider) {
+      console.error(`[DEBUG] No provider found, attempting to reconnect...`);
+      await this.reconnect();
+
+      // After reconnecting, wait for synchronization
+      return this.ensureSynchronized();
+    }
+  }
+
   /**
    * Initialize the document structure with required maps
    */
   private initializeDocumentStructure(): void {
-    // Initialize document in a transaction to ensure proper Yjs type creation
-    this.document.transact(() => {
-      // Ensure the cells map exists
-      if (!this.document.getMap("cells").size) {
-        const cellsMap = this.document.getMap("cells");
-        // Initialize with empty content if needed
-        if (!cellsMap.has("initialized")) {
-          cellsMap.set("initialized", true);
-        }
-      }
+    console.error(
+      `[DEBUG] initializeDocumentStructure() called for document: ${this.session.fileId}`,
+    );
 
-      // Ensure the metadata map exists
-      if (!this.document.getMap("metadata").size) {
-        const metadataMap = this.document.getMap("metadata");
-        // Initialize with basic notebook metadata
-        if (!metadataMap.has("initialized")) {
-          metadataMap.set("initialized", true);
-          metadataMap.set("kernelspec", {
-            display_name: "Python 3",
-            language: "python",
-            name: "python3",
-          });
-          metadataMap.set("language_info", {
-            name: "python",
-            version: "3.8.5",
+    try {
+      // Use YNotebook's built-in structure initialization
+      this.document.transact(() => {
+        console.error(
+          `[DEBUG] Inside document transaction for ${this.session.fileId}`,
+        );
+
+        // Initialize with basic notebook metadata if not already set
+        if (
+          !this.yNotebook.metadata ||
+          Object.keys(this.yNotebook.metadata).length === 0
+        ) {
+          console.error(`[DEBUG] Initializing empty notebook metadata`);
+          this.yNotebook.setMetadata({
+            kernelspec: {
+              display_name: "Python 3",
+              language: "python",
+              name: "python3",
+            },
+            language_info: {
+              name: "python",
+              version: "3.8.5",
+            },
           });
         }
-      }
-    });
+
+        // Ensure nbformat is set
+        if (!this.yNotebook.nbformat) {
+          this.yNotebook.nbformat = 4;
+        }
+
+        // Ensure nbformat_minor is set
+        if (!this.yNotebook.nbformat_minor) {
+          this.yNotebook.nbformat_minor = 5;
+        }
+      });
+
+      console.error(
+        `[DEBUG] Document structure initialization completed successfully for ${this.session.fileId}`,
+      );
+    } catch (error) {
+      console.error(
+        `[DEBUG] Error in initializeDocumentStructure() for ${this.session.fileId}:`,
+        error,
+      );
+      throw error;
+    }
   }
 
   /**
    * Get the notebook content from the Yjs document
    */
   getNotebookContent(): any {
+    console.error(
+      `[DEBUG] getNotebookContent() called for document: ${this.session.fileId}`,
+    );
+
+    // Check if we're connected to the WebSocket server
+    if (!this.connected) {
+      throw new Error(
+        `Document session is not connected to the WebSocket server.`,
+      );
+    }
+
+    // Check if the document is synchronized
+    if (!this.synced) {
+      throw new Error(
+        `Document is not yet synchronized. Please wait for synchronization to complete.`,
+      );
+    }
+
     // Initialize document structure if needed
+    console.error(`[DEBUG] Calling initializeDocumentStructure()`);
     this.initializeDocumentStructure();
 
-    // Get the cells and metadata maps
-    const cellsMap = this.document.getMap("cells");
-    const metadataMap = this.document.getMap("metadata");
+    // Get the notebook content using YNotebook
+    console.error(`[DEBUG] Getting notebook content from YNotebook`);
+    const notebookContent = this.yNotebook.toJSON();
 
-    const cells = [];
-    for (const [cellId, cell] of cellsMap) {
-      if (cell instanceof Y.Map) {
-        cells.push({
-          id: cellId,
-          content: cell.get("source") || "",
-          type: cell.get("cell_type") || "code",
-          metadata: cell.get("metadata")?.toJSON() || {},
-        });
-      }
-    }
+    console.error(
+      `[DEBUG] Notebook content retrieved:`,
+      JSON.stringify(
+        {
+          cellCount: notebookContent.cells?.length || 0,
+          nbformat: notebookContent.nbformat,
+          nbformat_minor: notebookContent.nbformat_minor,
+        },
+        null,
+        2,
+      ),
+    );
+
+    // Transform the content to match the expected format
+    const cells = notebookContent.cells.map((cell: any) => ({
+      id: cell.id,
+      content: cell.source,
+      type: cell.cell_type,
+      metadata: cell.metadata || {},
+    }));
 
     return {
       cells,
-      metadata: metadataMap?.toJSON() || {},
+      metadata: notebookContent.metadata || {},
     };
   }
 
@@ -277,18 +413,41 @@ export class DocumentSession {
     // Initialize document structure if needed
     this.initializeDocumentStructure();
 
-    const cellsMap = this.document.getMap("cells");
-    let cell = cellsMap.get(cellId);
+    // Find the cell by ID in the YNotebook
+    const notebookContent = this.yNotebook.toJSON();
+    const cellIndex = notebookContent.cells.findIndex(
+      (cell: any) => cell.id === cellId,
+    );
 
-    if (cell instanceof Y.Map) {
-      cell.set("source", content);
+    if (cellIndex !== -1) {
+      // Update the cell content using YNotebook's setSource method
+      const cell = this.yNotebook.getCell(cellIndex);
+      this.document.transact(() => {
+        // Use the cell's setSource method if available
+        if (typeof cell.setSource === "function") {
+          cell.setSource(content);
+        } else {
+          // Fallback to recreating the cell
+          const updatedCell = {
+            ...cell.toJSON(),
+            source: content,
+          };
+          // Remove the old cell and insert the updated one
+          this.yNotebook.deleteCell(cellIndex);
+          this.yNotebook.insertCell(cellIndex, updatedCell);
+        }
+      });
     } else {
       // Create a new cell if it doesn't exist
-      const newCell = new Y.Map();
-      newCell.set("source", content);
-      newCell.set("cell_type", "code");
-      newCell.set("metadata", new Y.Map());
-      cellsMap.set(cellId, newCell);
+      this.document.transact(() => {
+        const newCell = {
+          cell_type: "code",
+          source: content,
+          metadata: {},
+          id: cellId,
+        };
+        this.yNotebook.addCell(newCell);
+      });
     }
   }
 
@@ -303,42 +462,25 @@ export class DocumentSession {
     // Initialize document structure if needed
     this.initializeDocumentStructure();
 
-    const cellsMap = this.document.getMap("cells");
     const cellId = `cell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    const newCell = new Y.Map();
-    newCell.set("source", content);
-    newCell.set("cell_type", type);
-    newCell.set("metadata", new Y.Map());
+    const newCell = {
+      cell_type: type,
+      source: content,
+      metadata: {},
+      id: cellId,
+    };
 
     if (position !== undefined && position >= 0) {
       // Insert at specific position
-      const cells = Array.from(cellsMap.entries());
-      const newCells = new Y.Map();
-
-      // Insert cells before the position
-      for (let i = 0; i < position && i < cells.length; i++) {
-        newCells.set(cells[i][0], cells[i][1]);
-      }
-
-      // Insert the new cell
-      newCells.set(cellId, newCell);
-
-      // Insert remaining cells
-      for (let i = position; i < cells.length; i++) {
-        newCells.set(cells[i][0], cells[i][1]);
-      }
-
-      // Replace the cells map
       this.document.transact(() => {
-        cellsMap.clear();
-        for (const [key, value] of newCells) {
-          cellsMap.set(key, value);
-        }
+        this.yNotebook.insertCell(position, newCell);
       });
     } else {
       // Append to the end
-      cellsMap.set(cellId, newCell);
+      this.document.transact(() => {
+        this.yNotebook.addCell(newCell);
+      });
     }
 
     return cellId;
@@ -352,15 +494,21 @@ export class DocumentSession {
     // Initialize document structure if needed
     this.initializeDocumentStructure();
 
-    const cellsMap = this.document.getMap("cells");
+    // Find the cell by ID in the YNotebook
+    const notebookContent = this.yNotebook.toJSON();
+    const cellIndex = notebookContent.cells.findIndex(
+      (cell: any) => cell.id === cellId,
+    );
 
-    // Check if the cell exists before deleting
-    if (!cellsMap.has(cellId)) {
+    if (cellIndex === -1) {
       console.warn(`Cell with ID ${cellId} not found in document`);
       return;
     }
 
-    cellsMap.delete(cellId);
+    // Delete the cell using YNotebook's deleteCell method
+    this.document.transact(() => {
+      this.yNotebook.deleteCell(cellIndex);
+    });
   }
   /**
    * Handle reconnection logic
@@ -401,16 +549,36 @@ export class DocumentSession {
   }
 
   /**
-   * Notify all update callbacks of a document update
-   * @param update Yjs update
+   * Handle sync event from the WebSocket provider
+   * @param isSynced Whether the document is synchronized
    */
-  private notifyUpdateCallbacks(update: Uint8Array): void {
-    this.updateCallbacks.forEach((callback: any) => {
-      try {
-        callback(update);
-      } catch (error) {
-        console.error("Error in document update callback:", error);
+  private _onSync = (isSynced: boolean) => {
+    console.error(`[DEBUG] Document sync status: ${isSynced}`);
+    this.synced = isSynced;
+    if (isSynced && this.connected) {
+      // Set document ID after sync, similar to JupyterLab's implementation
+      const state = this.document.getMap("state");
+      state.set("document_id", this.provider!.roomname);
+      console.error(
+        `[DEBUG] Document synchronized and ready, resolving connection promise`,
+      );
+
+      // Resolve any pending connection promise
+      if (this._connectionPromise) {
+        this._connectionPromise.resolve();
+        this._connectionPromise = null;
       }
-    });
-  }
+    }
+  };
+
+  /**
+   * Handle connection close event from the WebSocket provider
+   * @param event Connection close event
+   */
+  private _onConnectionClosed = (event: any) => {
+    this.connected = false;
+    this.synced = false;
+    console.error(`Disconnected from document: ${this.session.fileId}`, event);
+    this.handleReconnect();
+  };
 }

@@ -1,5 +1,4 @@
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
-import { JupyterLabWebSocketClient } from "../jupyter/websocket-client.js";
 
 /**
  * NotebookTools provides high-level operations for Jupyter notebooks
@@ -491,23 +490,40 @@ export class NotebookTools {
     exec?: boolean;
   }): Promise<any> {
     try {
+      console.error(
+        `[DEBUG] insertNotebookCells called with path: ${params.path}, position: ${params.position}, exec: ${params.exec}`,
+      );
+      console.error(`[DEBUG] Cell count: ${params.cells.length}`);
+
       const session = await this.jupyterAdapter.createDocumentSession(
         params.path,
         "notebook",
       );
+
+      console.error(`[DEBUG] Document session created successfully`);
+
       const cellIds = [];
 
       for (const cell of params.cells) {
+        console.error(
+          `[DEBUG] Adding cell of type: ${cell.type || "code"}, content length: ${cell.content.length}`,
+        );
         const cellId = session.addCell(
           cell.content,
           cell.type || "code",
           params.position,
         );
         cellIds.push(cellId);
+        console.error(`[DEBUG] Added cell with ID: ${cellId}`);
       }
+
+      console.error(
+        `[DEBUG] All cells added successfully, cell IDs: ${cellIds.join(", ")}`,
+      );
 
       // Execute cells if requested
       if (params.exec !== false && cellIds.length > 0) {
+        console.error(`[DEBUG] Executing cells...`);
         await this.executeCells(session, cellIds);
       }
 
@@ -527,7 +543,12 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to insert notebook cells:", error);
+      console.error("[DEBUG] Failed to insert notebook cells:", error);
+      console.error("[DEBUG] Error details:", {
+        name: (error as Error)?.name,
+        message: (error as Error)?.message,
+        stack: (error as Error)?.stack,
+      });
       throw new Error(
         `Failed to insert notebook cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -659,6 +680,9 @@ export class NotebookTools {
     });
     const sessionInfo = (session as any).session;
 
+    // Store the original path for contents API calls
+    const originalPath = (session as any).originalPath || sessionInfo.fileId;
+
     // Get the kernel session for this notebook
     const sessionsUrl = URLExt.join(settings.baseUrl, "/api/sessions");
     const sessionsInit: RequestInit = {
@@ -728,10 +752,16 @@ export class NotebookTools {
         // First, let's get the notebook content to ensure it exists
         const { URLExt } = await import("@jupyterlab/coreutils");
 
+        // Use originalPath instead of fileId for contents API
+        const pathToUse = originalPath;
+        console.error(
+          `[DEBUG] Using path for contents API: ${pathToUse} (originalPath: ${originalPath}, fileId: ${sessionInfo.fileId})`,
+        );
+
         const contentUrl = URLExt.join(
           settings.baseUrl,
           "/api/contents",
-          sessionInfo.fileId,
+          pathToUse,
         );
         const contentInit: RequestInit = {
           method: "GET",
@@ -751,10 +781,21 @@ export class NotebookTools {
         );
 
         if (!contentResponse.ok) {
+          console.error(
+            `[DEBUG] Notebook content check failed for ${sessionInfo.fileId}: ${contentResponse.status} ${contentResponse.statusText}`,
+          );
+          console.error(`[DEBUG] Request URL was: ${contentUrl}`);
+          console.error(
+            `[DEBUG] This suggests the notebook file doesn't exist at the expected path`,
+          );
           throw new Error(
             `Failed to get notebook content: ${contentResponse.status} ${contentResponse.statusText}`,
           );
         }
+
+        console.error(
+          `[DEBUG] Successfully verified notebook exists at path: ${sessionInfo.fileId}`,
+        );
 
         // Create a new session for the notebook
         const newSessionUrl = URLExt.join(settings.baseUrl, "/api/sessions");
@@ -764,7 +805,7 @@ export class NotebookTools {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            path: sessionInfo.fileId,
+            path: pathToUse, // Use original path instead of fileId
             type: "notebook",
             kernel: {
               name: "python3", // Default kernel, can be made configurable
@@ -880,6 +921,8 @@ export class NotebookTools {
         "execute",
       );
 
+      console.error(`[DEBUG] Cell execution URL: ${executeUrl}`);
+
       const executeInit: RequestInit = {
         method: "POST",
         headers: {
@@ -902,12 +945,36 @@ export class NotebookTools {
         };
       }
 
+      console.error(
+        `[DEBUG] Cell execution request body:`,
+        JSON.stringify(
+          {
+            code:
+              cellContent.substring(0, 100) +
+              (cellContent.length > 100 ? "..." : ""),
+            silent: false,
+            store_history: true,
+            user_expressions: {},
+            allow_stdin: false,
+            stop_on_error: false,
+          },
+          null,
+          2,
+        ),
+      );
+
       let executeResponse: Response;
       try {
+        console.error(
+          `[DEBUG] Sending cell execution request to: ${executeUrl}`,
+        );
         executeResponse = await ServerConnection.makeRequest(
           executeUrl,
           executeInit,
           settings,
+        );
+        console.error(
+          `[DEBUG] Cell execution response status: ${executeResponse.status}`,
         );
       } catch (error) {
         console.error(`[DEBUG] Network error executing cell ${cellId}:`, error);
@@ -940,10 +1007,11 @@ export class NotebookTools {
             `Cell execution error for ${cellId}: ${responseData.evalue || "Unknown error"}`,
           );
         }
-      } catch (parseError) {
+      } catch {
         // If we can't parse the response, it might not be JSON, which is okay
         console.error(
-          `[DEBUG] Could not parse execution response for cell ${cellId} as JSON`,
+          `[WARN] Could not parse execution response for cell ${cellId} as JSON:\n` +
+            responseText,
         );
       }
 
@@ -1344,13 +1412,27 @@ export class NotebookTools {
    */
   private getCellContent(session: any, cellId: string): string {
     try {
+      console.error(`[DEBUG] getCellContent called for cell ID: ${cellId}`);
+
       if (!session || typeof session.getNotebookContent !== "function") {
         throw new Error(
           "Invalid session or session does not have getNotebookContent method",
         );
       }
 
+      console.error(`[DEBUG] Calling getNotebookContent()`);
       const notebookContent = session.getNotebookContent();
+      console.error(
+        `[DEBUG] Notebook content retrieved:`,
+        JSON.stringify(
+          {
+            cellCount: notebookContent.cells?.length || 0,
+            cellIds: notebookContent.cells?.map((c: any) => c.id) || [],
+          },
+          null,
+          2,
+        ),
+      );
 
       if (
         !notebookContent ||
@@ -1360,13 +1442,23 @@ export class NotebookTools {
         throw new Error("Invalid notebook content or cells array");
       }
 
+      console.error(
+        `[DEBUG] Searching for cell with ID ${cellId} among ${notebookContent.cells.length} cells`,
+      );
       const cell = notebookContent.cells.find((c: any) => c.id === cellId);
 
       if (!cell) {
         console.error(`[DEBUG] Cell with ID ${cellId} not found in notebook`);
+        console.error(
+          `[DEBUG] Available cell IDs:`,
+          notebookContent.cells.map((c: any) => c.id),
+        );
         return "";
       }
 
+      console.error(
+        `[DEBUG] Found cell with ID ${cellId}, content length: ${(cell.content || "").length}`,
+      );
       return cell.content || "";
     } catch (error) {
       console.error(`[DEBUG] Error getting cell content for ${cellId}:`, error);
