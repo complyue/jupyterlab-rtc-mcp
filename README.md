@@ -88,6 +88,11 @@ To use the MCP server with an AI agent, configure the agent to use the server as
 For debugging purposes, you can use the HTTP transport to interact with the server directly:
 
 ```bash
+# Set environment variables for HTTP transport
+export JUPYTERLAB_URL=http://localhost:8888
+export JUPYTERLAB_TOKEN=your-token-here
+export LOG_LEVEL=info
+
 # Start the server with HTTP transport
 npx jupyterlab-rtc-mcp --transport http --port 3000
 
@@ -247,6 +252,10 @@ To use the HTTP transport with MCP clients, configure the client with streamable
 
 Example debugging session:
 ```bash
+# Set environment variables
+export JUPYTERLAB_URL=http://localhost:8888
+export JUPYTERLAB_TOKEN=your-token-here
+
 # Start server with debug logging
 npx jupyterlab-rtc-mcp --transport http --port 3000 --log-level debug
 
