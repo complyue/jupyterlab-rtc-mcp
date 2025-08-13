@@ -3,6 +3,7 @@ import { PromiseDelegate } from "@lumino/coreutils";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { cookieManager } from "./cookie-manager.js";
+import { logger } from "../utils/logger.js";
 
 export interface ISessionModel {
   format: string;
@@ -70,16 +71,6 @@ export class DocumentSession {
     const wsUrlWithParams = new URL(wsUrl);
     wsUrlWithParams.searchParams.append("sessionId", this.session.sessionId);
 
-    // Add token if provided
-    if (this.token) {
-      wsUrlWithParams.searchParams.append("token", this.token);
-      console.error(
-        `[DEBUG] Using token for authentication: ${this.token.substring(0, 10)}...`,
-      );
-    } else {
-      console.error(`[DEBUG] No token provided for authentication`);
-    }
-
     // Add cookies if available
     if (this.cookieManager.hasCookies()) {
       const cookieHeader = this.cookieManager.getCookieHeader();
@@ -89,12 +80,7 @@ export class DocumentSession {
         "cookies",
         encodeURIComponent(cookieHeader),
       );
-      console.error(`[DEBUG] Using cookies for WebSocket authentication`);
     }
-
-    console.error(
-      `[DEBUG] Attempting WebSocket connection to: ${wsUrlWithParams.toString()}`,
-    );
 
     // Create WebSocket provider
     this.provider = new WebsocketProvider(
@@ -111,7 +97,6 @@ export class DocumentSession {
       if (event.status === "connected") {
         this.connected = true;
         this.reconnectAttempts = 0;
-        console.error(`Connected to document: ${this.session.fileId}`);
         // Don't resolve yet, wait for sync
       }
     });
@@ -122,8 +107,8 @@ export class DocumentSession {
     this.provider.on("connection-close", this._onConnectionClosed);
 
     this.provider.on("connection-error", (error: any) => {
-      console.error(
-        `WebSocket error for document ${this.session.fileId}:`,
+      logger.error(
+        `WebSocket error for document ${this.session.fileId}`,
         error,
       );
 
@@ -141,16 +126,9 @@ export class DocumentSession {
         }
       }
 
-      console.error(
-        `Detailed WebSocket error for document ${this.session.fileId}:`,
-        errorMessage,
+      logger.error(
+        `Detailed WebSocket error for document ${this.session.fileId}: ${errorMessage}`,
       );
-
-      // Try to get more information about the WebSocket connection attempt
-      console.error(`[DEBUG] WebSocket URL: ${wsUrlWithParams.toString()}`);
-      console.error(`[DEBUG] Base URL: ${this.baseUrl}`);
-      console.error(`[DEBUG] Session ID: ${this.session.sessionId}`);
-      console.error(`[DEBUG] File ID: ${this.session.fileId}`);
 
       if (!this.connected && this._connectionPromise) {
         this._connectionPromise.reject(error);
@@ -175,14 +153,14 @@ export class DocumentSession {
     }
     this.connected = false;
     this.synced = false;
-    console.error(`Disconnected from document: ${this.session.fileId}`);
+    logger.debug(`Disconnected from document: ${this.session.fileId}`);
   }
 
   /**
    * Reconnect to the JupyterLab WebSocket server
    */
   async reconnect(): Promise<void> {
-    console.error(`[DEBUG] Reconnecting to document: ${this.session.fileId}`);
+    logger.debug(`Reconnecting to document: ${this.session.fileId}`);
 
     // Disconnect first if already connected
     if (this.provider) {
@@ -225,13 +203,13 @@ export class DocumentSession {
    * @returns Promise that resolves when the document is synchronized
    */
   async ensureSynchronized(): Promise<void> {
-    console.error(
-      `[DEBUG] ensureSynchronized() called for document: ${this.session.fileId}`,
+    logger.debug(
+      `ensureSynchronized() called for document: ${this.session.fileId}`,
     );
 
     // If already synchronized, return immediately
     if (this.synced) {
-      console.error(`[DEBUG] Document already synchronized`);
+      logger.debug(`Document already synchronized`);
       return;
     }
 
@@ -244,7 +222,7 @@ export class DocumentSession {
 
     // If we have a provider but it's not synced, wait for the sync event
     if (this.provider && !this.synced) {
-      console.error(`[DEBUG] Waiting for document synchronization...`);
+      logger.debug(`Waiting for document synchronization...`);
 
       return new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -257,7 +235,7 @@ export class DocumentSession {
           if (isSynced) {
             clearTimeout(timeout);
             this.provider?.off("sync", syncHandler);
-            console.error(`[DEBUG] Document synchronized successfully`);
+            logger.debug(`Document synchronized successfully`);
             resolve();
           }
         };
@@ -268,7 +246,7 @@ export class DocumentSession {
 
     // If we don't have a provider, try to reconnect
     if (!this.provider) {
-      console.error(`[DEBUG] No provider found, attempting to reconnect...`);
+      logger.debug(`No provider found, attempting to reconnect...`);
       await this.reconnect();
 
       // After reconnecting, wait for synchronization
@@ -280,10 +258,6 @@ export class DocumentSession {
    * Get the document content from the Yjs document
    */
   getDocumentContent(): any {
-    console.error(
-      `[DEBUG] getDocumentContent() called for document: ${this.session.fileId}`,
-    );
-
     // Check if we're connected to the WebSocket server
     if (!this.connected) {
       throw new Error(
@@ -299,7 +273,6 @@ export class DocumentSession {
     }
 
     // Get the document content
-    console.error(`[DEBUG] Getting document content from Yjs document`);
     const content = this.document.getMap("content");
     const metadata = this.document.getMap("metadata");
 
@@ -307,11 +280,6 @@ export class DocumentSession {
       content: content.toJSON(),
       metadata: metadata.toJSON(),
     };
-
-    console.error(
-      `[DEBUG] Full raw document content:`,
-      JSON.stringify(documentContent, null, 2),
-    );
 
     return documentContent;
   }
@@ -370,10 +338,6 @@ export class DocumentSession {
       this.reconnectAttempts++;
       const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
 
-      console.error(
-        `Attempting to reconnect to document ${this.session.fileId} in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
-      );
-
       setTimeout(() => {
         if (!this.connected) {
           this.connect().catch((error: any) => {
@@ -387,14 +351,14 @@ export class DocumentSession {
                 errorMessage = JSON.stringify(error);
               }
             }
-            console.error(
+            logger.error(
               `Reconnection failed for document ${this.session.fileId}: ${errorMessage}`,
             );
           });
         }
       }, delay);
     } else {
-      console.error(
+      logger.error(
         `Max reconnection attempts reached for document ${this.session.fileId}`,
       );
     }
@@ -405,15 +369,11 @@ export class DocumentSession {
    * @param isSynced Whether the document is synchronized
    */
   private _onSync = (isSynced: boolean) => {
-    console.error(`[DEBUG] Document sync status: ${isSynced}`);
     this.synced = isSynced;
     if (isSynced && this.connected) {
       // Set document ID after sync, similar to JupyterLab's implementation
       const state = this.document.getMap("state");
       state.set("document_id", this.provider!.roomname);
-      console.error(
-        `[DEBUG] Document synchronized and ready, resolving connection promise`,
-      );
 
       // Resolve any pending connection promise
       if (this._connectionPromise) {
@@ -430,7 +390,7 @@ export class DocumentSession {
   private _onConnectionClosed = (event: any) => {
     this.connected = false;
     this.synced = false;
-    console.error(`Disconnected from document: ${this.session.fileId}`, event);
+    logger.error(`Disconnected from document: ${this.session.fileId}`, event);
     this.handleReconnect();
   };
 }

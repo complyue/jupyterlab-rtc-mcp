@@ -1,4 +1,5 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { logger } from "../../utils/logger.js";
 
 /**
  * Stdio transport handler for JupyterLab RTC MCP Server
@@ -20,7 +21,7 @@ export class JupyterLabStdioTransport extends StdioServerTransport {
   override async start(): Promise<void> {
     // The parent class handles the actual transport setup
     // This method is for any additional setup specific to JupyterLab
-    console.error("Starting JupyterLab RTC MCP Server with stdio transport...");
+    logger.info("Starting JupyterLab RTC MCP Server with stdio transport...");
   }
 
   /**
@@ -29,6 +30,6 @@ export class JupyterLabStdioTransport extends StdioServerTransport {
   async stop(): Promise<void> {
     // The parent class handles the actual transport cleanup
     // This method is for any additional cleanup specific to JupyterLab
-    console.error("Stopping JupyterLab RTC MCP Server...");
+    logger.info("Stopping JupyterLab RTC MCP Server...");
   }
 }

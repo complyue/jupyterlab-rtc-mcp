@@ -3,6 +3,7 @@ import { URLExt } from "@jupyterlab/coreutils";
 import { DocumentSession } from "./document-session.js";
 import { NotebookSession } from "./notebook-session.js";
 import { cookieManager } from "./cookie-manager.js";
+import { logger } from "../utils/logger.js";
 
 export interface ISessionModel {
   format: string;
@@ -29,15 +30,6 @@ export class JupyterLabAdapter {
       baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
     this.token = token || process.env.JUPYTERLAB_TOKEN;
 
-    // Log token information for debugging
-    if (this.token) {
-      console.error(
-        `[DEBUG] Using JupyterLab token: ${this.token.substring(0, 10)}...`,
-      );
-    } else {
-      console.error(`[DEBUG] No JupyterLab token provided`);
-    }
-
     this.documentSessions = new Map();
     this.notebookSessions = new Map();
     this.cookieManager = cookieManager;
@@ -53,34 +45,20 @@ export class JupyterLabAdapter {
     path: string,
     type: string = "notebook",
   ): Promise<DocumentSession> {
-    console.error(
-      `[DEBUG] Creating document session for path: ${path}, type: ${type}`,
-    );
-    console.error(`[DEBUG] Using baseUrl: ${this.baseUrl}`);
-
     try {
       // Request a document session from JupyterLab
-      console.error(`[DEBUG] About to call requestDocSession`);
       const session = await this.requestDocSession(path, type);
-      console.error(`[DEBUG] Received session: ${JSON.stringify(session)}`);
 
       // Check if we already have a session for this document
       if (this.documentSessions.has(session.fileId)) {
-        console.error(
-          `[DEBUG] Found existing session for fileId: ${session.fileId}`,
-        );
         const existingSession = this.documentSessions.get(session.fileId)!;
         if (!existingSession.isConnected()) {
-          console.error(`[DEBUG] Reconnecting to existing session`);
           await existingSession.connect();
         }
         return existingSession;
       }
 
       // Create a new document session
-      console.error(
-        `[DEBUG] Creating new document session with baseUrl: ${this.baseUrl}`,
-      );
       const documentSession = new DocumentSession(
         session,
         this.baseUrl,
@@ -89,28 +67,15 @@ export class JupyterLabAdapter {
 
       // Store the original path for later use with contents API
       (documentSession as any).originalPath = path;
-      console.error(
-        `[DEBUG] Stored original path: ${path} for session with fileId: ${session.fileId}`,
-      );
 
       this.documentSessions.set(session.fileId, documentSession);
 
       // Connect to the document
-      console.error(`[DEBUG] About to connect to document session`);
       await documentSession.connect();
-      console.error(`[DEBUG] Successfully connected to document session`);
 
       return documentSession;
     } catch (error) {
-      console.error(
-        `[DEBUG] Error in createDocumentSession for path ${path}:`,
-        error,
-      );
-      console.error(`[DEBUG] Error details:`, {
-        name: (error as Error)?.name,
-        message: (error as Error)?.message,
-        stack: (error as Error)?.stack,
-      });
+      logger.error(`Error in createDocumentSession for path ${path}: `, error);
       throw error;
     }
   }
@@ -214,32 +179,20 @@ export class JupyterLabAdapter {
    * @returns Promise that resolves to a NotebookSession
    */
   async createNotebookSession(path: string): Promise<NotebookSession> {
-    console.error(`[DEBUG] Creating notebook session for path: ${path}`);
-    console.error(`[DEBUG] Using baseUrl: ${this.baseUrl}`);
-
     try {
       // Request a document session from JupyterLab
-      console.error(`[DEBUG] About to call requestDocSession`);
       const session = await this.requestDocSession(path, "notebook");
-      console.error(`[DEBUG] Received session: ${JSON.stringify(session)}`);
 
       // Check if we already have a session for this notebook
       if (this.notebookSessions.has(session.fileId)) {
-        console.error(
-          `[DEBUG] Found existing notebook session for fileId: ${session.fileId}`,
-        );
         const existingSession = this.notebookSessions.get(session.fileId)!;
         if (!existingSession.isConnected()) {
-          console.error(`[DEBUG] Reconnecting to existing notebook session`);
           await existingSession.connect();
         }
         return existingSession;
       }
 
       // Create a new notebook session
-      console.error(
-        `[DEBUG] Creating new notebook session with baseUrl: ${this.baseUrl}`,
-      );
       const notebookSession = new NotebookSession(
         session,
         this.baseUrl,
@@ -248,28 +201,15 @@ export class JupyterLabAdapter {
 
       // Store the original path for later use with contents API
       (notebookSession as any).originalPath = path;
-      console.error(
-        `[DEBUG] Stored original path: ${path} for session with fileId: ${session.fileId}`,
-      );
 
       this.notebookSessions.set(session.fileId, notebookSession);
 
       // Connect to the notebook
-      console.error(`[DEBUG] About to connect to notebook session`);
       await notebookSession.connect();
-      console.error(`[DEBUG] Successfully connected to notebook session`);
 
       return notebookSession;
     } catch (error) {
-      console.error(
-        `[DEBUG] Error in createNotebookSession for path ${path}:`,
-        error,
-      );
-      console.error(`[DEBUG] Error details:`, {
-        name: (error as Error)?.name,
-        message: (error as Error)?.message,
-        stack: (error as Error)?.stack,
-      });
+      logger.error(`Error in createNotebookSession for path ${path}`, error);
       throw error;
     }
   }
@@ -444,8 +384,8 @@ export class JupyterLabAdapter {
     if (data.length > 0) {
       try {
         data = JSON.parse(data);
-      } catch (error) {
-        console.error("Not a JSON response body.", response);
+      } catch {
+        logger.error("Not a JSON response body.", response);
       }
     }
 
@@ -547,8 +487,6 @@ export class JupyterLabAdapter {
       encodeURIComponent(path),
     );
 
-    console.error(`[DEBUG] Requesting document session from: ${url}`);
-
     const init: RequestInit = {
       method: "PUT",
       body: JSON.stringify({ format: "json", type }),
@@ -560,11 +498,6 @@ export class JupyterLabAdapter {
         ...init.headers,
         Authorization: `token ${this.token}`,
       };
-      console.error(
-        `[DEBUG] Added authorization header with token: ${this.token.substring(0, 10)}...`,
-      );
-    } else {
-      console.error(`[DEBUG] No token available for authorization header`);
     }
 
     // Add cookies if available
@@ -573,26 +506,21 @@ export class JupyterLabAdapter {
         ...init.headers,
         Cookie: this.cookieManager.getCookieHeader(),
       };
-      console.error(`[DEBUG] Added cookies to request`);
     }
 
     let response: Response;
     response = await ServerConnection.makeRequest(url, init, settings);
-    console.error(
-      `[DEBUG] Session request response status: ${response.status}`,
-    );
 
     // Store cookies from response
     this.cookieManager.parseResponseHeaders(response.headers);
-    console.error(`[DEBUG] Stored cookies from response`);
 
     let data: any = await response.text();
 
     if (data.length > 0) {
       try {
         data = JSON.parse(data);
-      } catch (error) {
-        console.error("Not a JSON response body.", response);
+      } catch {
+        logger.error("Not a JSON response body.", response);
       }
     }
 

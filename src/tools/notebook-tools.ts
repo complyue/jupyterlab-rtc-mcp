@@ -1,4 +1,5 @@
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
+import { logger } from "../utils/logger.js";
 
 /**
  * NotebookTools provides high-level operations for Jupyter notebooks
@@ -48,7 +49,7 @@ export class NotebookTools {
       try {
         response = await ServerConnection.makeRequest(url, init, settings);
       } catch (error) {
-        console.error("Network error in listNotebooks:", error);
+        logger.error("Network error in listNotebooks:", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -60,8 +61,8 @@ export class NotebookTools {
         try {
           data = JSON.parse(data);
         } catch (error) {
-          console.error("Not a JSON response body in listNotebooks:", error);
-          console.error("Response:", response);
+          logger.error("Not a JSON response body in listNotebooks:", error);
+          logger.error("Response:", response);
         }
       }
 
@@ -83,7 +84,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to list notebooks:", error);
+      logger.error("Failed to list notebooks:", error);
       throw new Error(
         `Failed to list notebooks: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -193,7 +194,7 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
-        console.error("Network error in getNotebookStatus (content):", error);
+        logger.error("Network error in getNotebookStatus (content):", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -205,11 +206,11 @@ export class NotebookTools {
         try {
           contentData = JSON.parse(contentData);
         } catch (error) {
-          console.error(
+          logger.error(
             "Not a JSON response body in getNotebookStatus (content):",
             error,
           );
-          console.error("Response:", contentResponse);
+          logger.error("Response:", contentResponse);
         }
       }
 
@@ -240,7 +241,7 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
-        console.error("Network error in getNotebookStatus (sessions):", error);
+        logger.error("Network error in getNotebookStatus (sessions):", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -252,11 +253,11 @@ export class NotebookTools {
         try {
           sessionsData = JSON.parse(sessionsData);
         } catch (error) {
-          console.error(
+          logger.error(
             "Not a JSON response body in getNotebookStatus (sessions):",
             error,
           );
-          console.error("Response:", sessionsResponse);
+          logger.error("Response:", sessionsResponse);
         }
       }
 
@@ -307,7 +308,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to get notebook status:", error);
+      logger.error("Failed to get notebook status", error);
       throw new Error(
         `Failed to get notebook status: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -350,7 +351,7 @@ export class NotebookTools {
       try {
         response = await ServerConnection.makeRequest(url, init, settings);
       } catch (error) {
-        console.error("Network error in readNotebookCells:", error);
+        logger.error("Network error in readNotebookCells:", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -362,11 +363,8 @@ export class NotebookTools {
         try {
           data = JSON.parse(data);
         } catch (error) {
-          console.error(
-            "Not a JSON response body in readNotebookCells:",
-            error,
-          );
-          console.error("Response:", response);
+          logger.error("Not a JSON response body in readNotebookCells:", error);
+          logger.error("Response:", response);
         }
       }
 
@@ -413,7 +411,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to read notebook cells:", error);
+      logger.error("Failed to read notebook cells", error);
       throw new Error(
         `Failed to read notebook cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -470,7 +468,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to modify notebook cells:", error);
+      logger.error("Failed to modify notebook cells", error);
       throw new Error(
         `Failed to modify notebook cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -489,39 +487,23 @@ export class NotebookTools {
     exec?: boolean;
   }): Promise<any> {
     try {
-      console.error(
-        `[DEBUG] insertNotebookCells called with path: ${params.path}, position: ${params.position}, exec: ${params.exec}`,
-      );
-      console.error(`[DEBUG] Cell count: ${params.cells.length}`);
-
       const session = await this.jupyterAdapter.createNotebookSession(
         params.path,
       );
 
-      console.error(`[DEBUG] Notebook session created successfully`);
-
       const cellIds = [];
 
       for (const cell of params.cells) {
-        console.error(
-          `[DEBUG] Adding cell of type: ${cell.type || "code"}, content length: ${cell.content.length}`,
-        );
         const cellId = session.addCell(
           cell.content,
           cell.type || "code",
           params.position,
         );
         cellIds.push(cellId);
-        console.error(`[DEBUG] Added cell with ID: ${cellId}`);
       }
-
-      console.error(
-        `[DEBUG] All cells added successfully, cell IDs: ${cellIds.join(", ")}`,
-      );
 
       // Execute cells if requested
       if (params.exec !== false && cellIds.length > 0) {
-        console.error(`[DEBUG] Executing cells...`);
         await this.executeCells(session, cellIds);
       }
 
@@ -541,12 +523,9 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      console.error("[DEBUG] Failed to insert notebook cells:", error);
-      console.error("[DEBUG] Error details:", {
-        name: (error as Error)?.name,
-        message: (error as Error)?.message,
-        stack: (error as Error)?.stack,
-      });
+      logger.error(
+        `Failed to insert notebook cells: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to insert notebook cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -596,7 +575,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to delete notebook cells:", error);
+      logger.error("Failed to delete notebook cells", error);
       throw new Error(
         `Failed to delete notebook cells: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -654,7 +633,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to restart notebook kernel:", error);
+      logger.error("Failed to restart notebook kernel", error);
       throw new Error(
         `Failed to restart notebook kernel: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -702,7 +681,7 @@ export class NotebookTools {
         settings,
       );
     } catch (error) {
-      console.error("Network error in executeCells:", error);
+      logger.error("Network error in executeCells", error);
       throw new Error(
         `Network error: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -714,8 +693,8 @@ export class NotebookTools {
       try {
         sessionsData = JSON.parse(sessionsData);
       } catch (error) {
-        console.error("Not a JSON response body in executeCells:", error);
-        console.error("Response:", sessionsResponse);
+        logger.error("Not a JSON response body in executeCells:", error);
+        logger.error("Response:", sessionsResponse);
       }
     }
 
@@ -740,8 +719,8 @@ export class NotebookTools {
 
     if (!kernelSession || !kernelSession.kernel) {
       // Try to start a new kernel for the notebook
-      console.error(
-        `[DEBUG] No active kernel found, attempting to start a new kernel for ${sessionInfo.fileId}`,
+      logger.debug(
+        `No active kernel found, attempting to start a new kernel for ${sessionInfo.fileId}`,
       );
 
       try {
@@ -750,8 +729,8 @@ export class NotebookTools {
 
         // Use originalPath instead of fileId for contents API
         const pathToUse = originalPath;
-        console.error(
-          `[DEBUG] Using path for contents API: ${pathToUse} (originalPath: ${originalPath}, fileId: ${sessionInfo.fileId})`,
+        logger.debug(
+          `Using path for contents API: ${pathToUse} (originalPath: ${originalPath}, fileId: ${sessionInfo.fileId})`,
         );
 
         const contentUrl = URLExt.join(
@@ -777,20 +756,17 @@ export class NotebookTools {
         );
 
         if (!contentResponse.ok) {
-          console.error(
-            `[DEBUG] Notebook content check failed for ${sessionInfo.fileId}: ${contentResponse.status} ${contentResponse.statusText}`,
+          logger.debug(
+            `Notebook content check failed for ${sessionInfo.fileId}: ${contentResponse.status} ${contentResponse.statusText}`,
           );
-          console.error(`[DEBUG] Request URL was: ${contentUrl}`);
-          console.error(
-            `[DEBUG] This suggests the notebook file doesn't exist at the expected path`,
-          );
+          logger.debug(`Request URL was: ${contentUrl}`);
           throw new Error(
             `Failed to get notebook content: ${contentResponse.status} ${contentResponse.statusText}`,
           );
         }
 
-        console.error(
-          `[DEBUG] Successfully verified notebook exists at path: ${sessionInfo.fileId}`,
+        logger.debug(
+          `Successfully verified notebook exists at path: ${sessionInfo.fileId}`,
         );
 
         // Create a new session for the notebook
@@ -816,8 +792,8 @@ export class NotebookTools {
           };
         }
 
-        console.error(
-          `[DEBUG] Creating new session for notebook: ${sessionInfo.fileId}`,
+        logger.debug(
+          `Creating new session for notebook: ${sessionInfo.fileId}`,
         );
 
         const newSessionResponse = await ServerConnection.makeRequest(
@@ -828,16 +804,14 @@ export class NotebookTools {
 
         if (!newSessionResponse.ok) {
           const errorText = await newSessionResponse.text();
-          console.error(`[DEBUG] Session creation failed: ${errorText}`);
+          logger.error(`[DEBUG] Session creation failed: ${errorText}`);
           throw new Error(
             `Failed to create new kernel session: ${newSessionResponse.status} ${newSessionResponse.statusText}`,
           );
         }
 
         const newSessionData = await newSessionResponse.json();
-        console.error(
-          `[DEBUG] New session created: ${JSON.stringify(newSessionData)}`,
-        );
+        logger.debug(`New session created: ${JSON.stringify(newSessionData)}`);
 
         if (!newSessionData.kernel) {
           throw new Error("New session created but no kernel was started");
@@ -859,7 +833,7 @@ export class NotebookTools {
         );
         return;
       } catch (kernelError) {
-        console.error("Failed to start new kernel:", kernelError);
+        logger.error("Failed to start new kernel:", kernelError);
         throw new Error(
           `No active kernel found for this notebook and failed to start a new one: ${kernelError instanceof Error ? kernelError.message : String(kernelError)}`,
         );
@@ -899,26 +873,15 @@ export class NotebookTools {
       throw new Error("Invalid kernel session or kernel ID");
     }
 
-    console.error(
-      `[DEBUG] Executing ${cellIds.length} cells with kernel: ${kernelSession.kernel.id}`,
+    logger.debug(
+      `Executing ${cellIds.length} cells with kernel: ${kernelSession.kernel.id}`,
     );
-    
-    // Log detailed kernel session information for debugging
-    console.error(`[DEBUG] Kernel session details:`, JSON.stringify({
-      kernelId: kernelSession.kernel.id,
-      kernelName: kernelSession.kernel.name,
-      kernelState: kernelSession.kernel.execution_state,
-      sessionId: kernelSession.id,
-      sessionPath: kernelSession.path,
-      sessionName: kernelSession.name,
-      sessionType: kernelSession.type
-    }, null, 2));
 
     // Execute each cell
     for (const cellId of cellIds) {
       const cellContent = this.getCellContent(session, cellId);
-      console.error(
-        `[DEBUG] Executing cell ${cellId} with content: ${cellContent.substring(0, 100)}...`,
+      logger.debug(
+        `Executing cell ${cellId} with content: ${cellContent.substring(0, 100)}...`,
       );
 
       const executeUrl = URLExt.join(
@@ -928,7 +891,7 @@ export class NotebookTools {
         "execute",
       );
 
-      console.error(`[DEBUG] Cell execution URL: ${executeUrl}`);
+      logger.debug(`Cell execution URL: ${executeUrl}`);
 
       const executeInit: RequestInit = {
         method: "POST",
@@ -952,9 +915,8 @@ export class NotebookTools {
         };
       }
 
-      console.error(
-        `[DEBUG] Cell execution request body:`,
-        JSON.stringify(
+      logger.debug(
+        `Cell execution request body: ${JSON.stringify(
           {
             code:
               cellContent.substring(0, 100) +
@@ -967,60 +929,64 @@ export class NotebookTools {
           },
           null,
           2,
-        ),
+        )}`,
       );
 
       let executeResponse: Response;
       try {
-        console.error(
-          `[DEBUG] Sending cell execution request to: ${executeUrl}`,
-        );
-        console.error(`[DEBUG] Request headers:`, JSON.stringify(executeInit.headers, null, 2));
-        
+        logger.debug(`Sending cell execution request to: ${executeUrl}`);
+
         // Check if the kernel is still alive before sending the request
         const kernelStatusUrl = URLExt.join(
           settings.baseUrl,
           "/api/kernels",
           kernelSession.kernel.id,
         );
-        
+
         try {
           const statusInit: RequestInit = {
             method: "GET",
           };
-          
+
           if (token) {
             statusInit.headers = {
               ...statusInit.headers,
               Authorization: `token ${token}`,
             };
           }
-          
+
           const statusResponse = await ServerConnection.makeRequest(
             kernelStatusUrl,
             statusInit,
             settings,
           );
-          console.error(`[DEBUG] Kernel status check response: ${statusResponse.status}`);
+          logger.debug(
+            `Kernel status check response: ${statusResponse.status}`,
+          );
           if (statusResponse.status === 404) {
-            console.error(`[DEBUG] Kernel ${kernelSession.kernel.id} not found (404)`);
-            throw new Error(`Kernel ${kernelSession.kernel.id} not found. It may have been terminated.`);
+            logger.debug(`Kernel ${kernelSession.kernel.id} not found (404)`);
+            throw new Error(
+              `Kernel ${kernelSession.kernel.id} not found. It may have been terminated.`,
+            );
           }
         } catch (statusError) {
-          console.error(`[DEBUG] Error checking kernel status:`, statusError);
+          logger.debug(
+            `Error checking kernel status: ${statusError instanceof Error ? statusError.message : String(statusError)}`,
+          );
         }
-        
+
         executeResponse = await ServerConnection.makeRequest(
           executeUrl,
           executeInit,
           settings,
         );
-        console.error(
-          `[DEBUG] Cell execution response status: ${executeResponse.status}`,
+        logger.debug(
+          `Cell execution response status: ${executeResponse.status}`,
         );
-        console.error(`[DEBUG] Cell execution response headers:`, executeResponse.headers);
       } catch (error) {
-        console.error(`[DEBUG] Network error executing cell ${cellId}:`, error);
+        logger.debug(
+          `Network error executing cell ${cellId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
         throw new Error(
           `Network error executing cell ${cellId}: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -1028,10 +994,7 @@ export class NotebookTools {
 
       if (!executeResponse.ok) {
         const errorText = await executeResponse.text();
-        console.error(
-          `[DEBUG] Cell execution failed for ${cellId}:`,
-          errorText,
-        );
+        logger.error(`Cell execution failed for ${cellId}: ${errorText}`);
         throw new Error(
           `Failed to execute cell ${cellId}: ${executeResponse.status} ${executeResponse.statusText} - ${errorText}`,
         );
@@ -1039,26 +1002,25 @@ export class NotebookTools {
 
       // Get the execution response to check for errors
       const responseText = await executeResponse.text();
+      let responseData;
       try {
-        const responseData = JSON.parse(responseText);
-        if (responseData.status === "error") {
-          console.error(
-            `[DEBUG] Cell execution returned error for ${cellId}:`,
-            responseData,
-          );
-          throw new Error(
-            `Cell execution error for ${cellId}: ${responseData.evalue || "Unknown error"}`,
-          );
-        }
+        responseData = JSON.parse(responseText);
       } catch {
         // If we can't parse the response, it might not be JSON, which is okay
-        console.error(
-          `[WARN] Could not parse execution response for cell ${cellId} as JSON:\n` +
-            responseText,
+        logger.warn(
+          `Could not parse execution response for cell ${cellId} as JSON:\n${responseText}`,
+        );
+      }
+      if (responseData?.status === "error") {
+        logger.error(
+          `Cell execution returned error for ${cellId}: ${responseData}`,
+        );
+        throw new Error(
+          `Cell execution error for ${cellId}: ${responseData.evalue || "Unknown error"}`,
         );
       }
 
-      console.error(`[DEBUG] Successfully executed cell ${cellId}`);
+      logger.debug(`Successfully executed cell ${cellId}`);
     }
   }
 
@@ -1099,7 +1061,7 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
-        console.error("Network error in restartKernel:", error);
+        logger.error("Network error in restartKernel", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -1111,11 +1073,11 @@ export class NotebookTools {
         try {
           sessionsData = JSON.parse(sessionsData);
         } catch (parseError) {
-          console.error(
+          logger.error(
             "Not a JSON response body in restartKernel:",
             parseError,
           );
-          console.error("Response:", sessionsResponse);
+          logger.error("Response:", sessionsResponse);
         }
       }
 
@@ -1137,31 +1099,22 @@ export class NotebookTools {
 
       if (!kernelSession || !kernelSession.kernel) {
         // No active kernel found, try to start a new one
-        console.error(
-          `[DEBUG] No active kernel found, attempting to start a new kernel for ${sessionInfo.fileId}`,
+        logger.debug(
+          `No active kernel found, attempting to start a new kernel for ${sessionInfo.fileId}`,
         );
 
         try {
           // First, let's get the notebook content to ensure it exists
           // DEBUG: Log the path resolution issue
-          console.error(
-            `[DEBUG] Using sessionInfo.fileId for contents API: ${sessionInfo.fileId}`,
-          );
-          console.error(
-            `[DEBUG] This might be the issue - fileId is a UUID but contents API expects a path`,
-          );
-          console.error(`[DEBUG] Original path provided: ${originalPath}`);
-
           // FIX: Use originalPath if available, otherwise fall back to fileId
           const pathToUse = originalPath || sessionInfo.fileId;
-          console.error(`[DEBUG] Using path for contents API: ${pathToUse}`);
+          logger.debug(`Using path for contents API: ${pathToUse}`);
 
           const contentUrl = URLExt.join(
             settings.baseUrl,
             "/api/contents",
             pathToUse,
           );
-          console.error(`[DEBUG] Constructed content URL: ${contentUrl}`);
           const contentInit: RequestInit = {
             method: "GET",
           };
@@ -1209,8 +1162,8 @@ export class NotebookTools {
             };
           }
 
-          console.error(
-            `[DEBUG] Creating new session for notebook: ${sessionInfo.fileId} with kernel: ${kernelName || "python3"}`,
+          logger.debug(
+            `Creating new session for notebook: ${sessionInfo.fileId} with kernel: ${kernelName || "python3"}`,
           );
 
           const newSessionResponse = await ServerConnection.makeRequest(
@@ -1221,15 +1174,15 @@ export class NotebookTools {
 
           if (!newSessionResponse.ok) {
             const errorText = await newSessionResponse.text();
-            console.error(`[DEBUG] Session creation failed: ${errorText}`);
+            logger.debug(`Session creation failed: ${errorText}`);
             throw new Error(
               `Failed to create new kernel session: ${newSessionResponse.status} ${newSessionResponse.statusText}`,
             );
           }
 
           const newSessionData = await newSessionResponse.json();
-          console.error(
-            `[DEBUG] New session created: ${JSON.stringify(newSessionData)}`,
+          logger.debug(
+            `New session created: ${JSON.stringify(newSessionData)}`,
           );
 
           if (!newSessionData.kernel) {
@@ -1269,7 +1222,7 @@ export class NotebookTools {
               settings,
             );
           } catch (error) {
-            console.error(
+            logger.error(
               "Network error in restartKernel (restart new kernel):",
               error,
             );
@@ -1284,12 +1237,12 @@ export class NotebookTools {
             );
           }
 
-          console.error(
-            `[DEBUG] Successfully started and restarted new kernel for ${sessionInfo.fileId}`,
+          logger.debug(
+            `Successfully started and restarted new kernel for ${sessionInfo.fileId}`,
           );
           return;
         } catch (kernelError) {
-          console.error("Failed to start new kernel:", kernelError);
+          logger.error("Failed to start new kernel:", kernelError);
           throw new Error(
             `No active kernel found for this notebook and failed to start a new one: ${kernelError instanceof Error ? kernelError.message : String(kernelError)}`,
           );
@@ -1377,7 +1330,7 @@ export class NotebookTools {
             settings,
           );
         } catch (error) {
-          console.error(
+          logger.error(
             "Network error in restartKernel (restart updated kernel):",
             error,
           );
@@ -1392,8 +1345,8 @@ export class NotebookTools {
           );
         }
 
-        console.error(
-          `[DEBUG] Successfully updated kernel to ${kernelName} and restarted for ${sessionInfo.fileId}`,
+        logger.debug(
+          `Successfully updated kernel to ${kernelName} and restarted for ${sessionInfo.fileId}`,
         );
         return;
       }
@@ -1425,7 +1378,7 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
-        console.error(
+        logger.error(
           "Network error in restartKernel (restart existing kernel):",
           error,
         );
@@ -1440,7 +1393,7 @@ export class NotebookTools {
         );
       }
     } catch (error) {
-      console.error("Failed to restart kernel:", error);
+      logger.error("Failed to restart kernel:", error);
       throw new Error(
         `Failed to restart kernel: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1455,51 +1408,25 @@ export class NotebookTools {
    */
   private getCellContent(session: any, cellId: string): string {
     try {
-      console.error(`[DEBUG] getCellContent called for cell ID: ${cellId}`);
-
       if (!session || typeof session.getNotebookContent !== "function") {
         throw new Error(
           "Invalid session or session does not have getNotebookContent method",
         );
       }
 
-      console.error(`[DEBUG] Calling getNotebookContent()`);
       const notebookContent = session.getNotebookContent();
 
-      console.error(
-        `[DEBUG] Notebook content retrieved - type: ${typeof notebookContent}`,
-      );
-
       if (notebookContent && notebookContent.cells) {
-        console.error(
-          `[DEBUG] Notebook cells array type: ${typeof notebookContent.cells}, length: ${notebookContent.cells.length}`,
-        );
-
         // Log the first few cells to understand their structure
         const sampleSize = Math.min(3, notebookContent.cells.length);
         for (let i = 0; i < sampleSize; i++) {
           const cell = notebookContent.cells[i];
-          console.error(`[DEBUG] Sample cell ${i}:`, {
-            type: typeof cell,
-            keys: Object.keys(cell || {}),
-            id: cell?.id,
-            hasId: Object.prototype.hasOwnProperty.call(cell, "id"),
-            source: cell?.source,
-            hasSource: Object.prototype.hasOwnProperty.call(cell, "source"),
-            cell_type: cell?.cell_type,
-            hasCellType: Object.prototype.hasOwnProperty.call(
-              cell,
-              "cell_type",
-            ),
-            content: cell?.content,
-            hasContent: Object.prototype.hasOwnProperty.call(cell, "content"),
-          });
         }
 
-        console.error(
+        logger.error(
           `[DEBUG] All cell IDs in notebook:`,
           notebookContent.cells.map((c: any, index: number) => {
-            console.error(
+            logger.error(
               `[DEBUG] Cell ${index} full object:`,
               JSON.stringify(c, null, 2),
             );
@@ -1507,21 +1434,6 @@ export class NotebookTools {
           }),
         );
       }
-
-      console.error(
-        `[DEBUG] Notebook content summary:`,
-        JSON.stringify(
-          {
-            cellCount: notebookContent.cells?.length || 0,
-            cellIds: notebookContent.cells?.map((c: any) => c.id) || [],
-            hasValidCells: notebookContent.cells?.every(
-              (c: any) => c && typeof c === "object",
-            ),
-          },
-          null,
-          2,
-        ),
-      );
 
       if (
         !notebookContent ||
@@ -1531,23 +1443,14 @@ export class NotebookTools {
         throw new Error("Invalid notebook content or cells array");
       }
 
-      console.error(
-        `[DEBUG] Searching for cell with ID ${cellId} among ${notebookContent.cells.length} cells`,
-      );
-
       // Try different ways to find the cell
       let cell = notebookContent.cells.find((c: any) => c.id === cellId);
 
       if (!cell) {
-        console.error(
-          `[DEBUG] Cell not found by direct ID match, trying alternative approaches`,
-        );
-
         // Try to find by string conversion
         cell = notebookContent.cells.find(
           (c: any) => String(c.id) === String(cellId),
         );
-        console.error(`[DEBUG] String conversion match result:`, !!cell);
 
         // Try to find by partial match
         if (!cell && cellId.includes("-")) {
@@ -1555,61 +1458,24 @@ export class NotebookTools {
           cell = notebookContent.cells.find(
             (c: any) => c.id && c.id.includes(partialId),
           );
-          console.error(
-            `[DEBUG] Partial match result with '${partialId}':`,
-            !!cell,
-          );
         }
-
-        // Log all available IDs for debugging
-        console.error(
-          `[DEBUG] All available cell IDs:`,
-          notebookContent.cells.map((c: any) => c.id),
-        );
       }
 
       if (!cell) {
-        console.error(
-          `[DEBUG] Cell with ID ${cellId} not found in notebook after all attempts`,
-        );
-        console.error(
-          `[DEBUG] Available cell IDs:`,
-          notebookContent.cells.map((c: any) => c.id),
-        );
         return "";
       }
 
-      console.error(
-        `[DEBUG] Found cell with ID ${cellId}, cell structure:`,
-        JSON.stringify(
-          {
-            id: cell.id,
-            hasContent: Object.prototype.hasOwnProperty.call(cell, "content"),
-            hasSource: Object.prototype.hasOwnProperty.call(cell, "source"),
-            contentLength: (cell.content || "").length,
-            sourceLength: (cell.source || "").length,
-            contentType: typeof cell.content,
-            sourceType: typeof cell.source,
-          },
-          null,
-          2,
-        ),
-      );
-
       // Try both 'content' and 'source' fields
       const cellContent = cell.content || cell.source || "";
-      console.error(
-        `[DEBUG] Returning cell content with length: ${cellContent.length}`,
-      );
-      
+
       // Add error handling for empty cell content
       if (!cellContent.trim()) {
-        console.warn(`[WARN] Cell ${cellId} has empty content after trimming`);
+        logger.warn(`[WARN] Cell ${cellId} has empty content after trimming`);
       }
-      
+
       return cellContent;
     } catch (error) {
-      console.error(`[DEBUG] Error getting cell content for ${cellId}:`, error);
+      logger.error(`[DEBUG] Error getting cell content for ${cellId}:`, error);
       throw new Error(
         `Failed to get cell content for ${cellId}: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1652,7 +1518,7 @@ export class NotebookTools {
           settings,
         );
       } catch (error) {
-        console.error("Network error in listAvailableKernels:", error);
+        logger.error("Network error in listAvailableKernels:", error);
         throw new Error(
           `Network error: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -1664,11 +1530,11 @@ export class NotebookTools {
         try {
           kernelsData = JSON.parse(kernelsData);
         } catch (error) {
-          console.error(
+          logger.error(
             "Not a JSON response body in listAvailableKernels:",
             error,
           );
-          console.error("Response:", kernelsResponse);
+          logger.error("Response:", kernelsResponse);
         }
       }
 
@@ -1702,7 +1568,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to list available kernels:", error);
+      logger.error("Failed to list available kernels:", error);
       throw new Error(
         `Failed to list available kernels: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1885,7 +1751,7 @@ export class NotebookTools {
         };
       }
     } catch (error) {
-      console.error("Failed to assign notebook kernel:", error);
+      logger.error("Failed to assign notebook kernel:", error);
       throw new Error(
         `Failed to assign notebook kernel: ${error instanceof Error ? error.message : String(error)}`,
       );

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import cors from 'cors';
+import { logger } from '../../utils/logger.js';
 
 /**
  * HTTP transport handler for JupyterLab RTC MCP Server
@@ -25,10 +26,10 @@ export class JupyterLabHTTPTransport {
     this.port = port;
     this.transports = {};
     this.app = express();
-    
+
     // Setup middleware
     this.app.use(express.json());
-    
+
     // Configure CORS to expose Mcp-Session-Id header
     this.app.use(cors({
       origin: '*', // Allow all origins - adjust as needed for production
@@ -45,7 +46,7 @@ export class JupyterLabHTTPTransport {
   private setupRoutes(): void {
     // Handle POST requests for MCP messages
     this.app.post('/mcp', async (req: Request, res: Response) => {
-      console.log('Received MCP request:', req.body);
+      logger.debug(`Received MCP request: ${JSON.stringify(req.body)}`);
       try {
         // Check for existing session ID
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
@@ -61,7 +62,7 @@ export class JupyterLabHTTPTransport {
             enableJsonResponse: true, // Enable JSON response mode
             onsessioninitialized: (sessionId) => {
               // Store the transport by session ID when session is initialized
-              console.log(`Session initialized with ID: ${sessionId}`);
+              logger.debug(`Session initialized with ID: ${sessionId}`);
               this.transports[sessionId] = transport;
             }
           });
@@ -86,7 +87,7 @@ export class JupyterLabHTTPTransport {
         // Handle the request with existing transport - no need to reconnect
         await transport.handleRequest(req, res, req.body);
       } catch (error) {
-        console.error('Error handling MCP request:', error);
+        logger.error('Error handling MCP request:', error);
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: '2.0',
@@ -123,10 +124,10 @@ export class JupyterLabHTTPTransport {
     return new Promise((resolve, reject) => {
       this.server = this.app.listen(this.port, (error?: Error) => {
         if (error) {
-          console.error(`[ERROR] Failed to start HTTP server on port ${this.port}:`, error);
+          logger.error(`[ERROR] Failed to start HTTP server on port ${this.port}:`, error);
           reject(error);
         } else {
-          console.error(`[INFO] JupyterLab RTC MCP HTTP server listening on port ${this.port}`);
+          logger.info(`JupyterLab RTC MCP HTTP server listening on port ${this.port}`);
           resolve();
         }
       });
@@ -140,7 +141,7 @@ export class JupyterLabHTTPTransport {
     return new Promise((resolve) => {
       if (this.server) {
         this.server.close(() => {
-          console.error('[INFO] JupyterLab RTC MCP HTTP server stopped');
+          logger.info('JupyterLab RTC MCP HTTP server stopped');
           resolve();
         });
       } else {

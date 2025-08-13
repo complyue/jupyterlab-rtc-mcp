@@ -4,6 +4,7 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { YNotebook } from "@jupyter/ydoc";
 import { cookieManager } from "./cookie-manager.js";
+import { logger } from "../utils/logger.js";
 
 export interface ISessionModel {
   format: string;
@@ -79,16 +80,6 @@ export class NotebookSession {
     const wsUrlWithParams = new URL(wsUrl);
     wsUrlWithParams.searchParams.append("sessionId", this.session.sessionId);
 
-    // Add token if provided
-    if (this.token) {
-      wsUrlWithParams.searchParams.append("token", this.token);
-      console.error(
-        `[DEBUG] Using token for authentication: ${this.token.substring(0, 10)}...`,
-      );
-    } else {
-      console.error(`[DEBUG] No token provided for authentication`);
-    }
-
     // Add cookies if available
     if (this.cookieManager.hasCookies()) {
       const cookieHeader = this.cookieManager.getCookieHeader();
@@ -98,12 +89,7 @@ export class NotebookSession {
         "cookies",
         encodeURIComponent(cookieHeader),
       );
-      console.error(`[DEBUG] Using cookies for WebSocket authentication`);
     }
-
-    console.error(
-      `[DEBUG] Attempting WebSocket connection to: ${wsUrlWithParams.toString()}`,
-    );
 
     // Create WebSocket provider using the embedded Y.Doc from YNotebook
     this.provider = new WebsocketProvider(
@@ -120,7 +106,6 @@ export class NotebookSession {
       if (event.status === "connected") {
         this.connected = true;
         this.reconnectAttempts = 0;
-        console.error(`Connected to notebook: ${this.session.fileId}`);
         // Don't resolve yet, wait for sync
       }
     });
@@ -131,36 +116,10 @@ export class NotebookSession {
     this.provider.on("connection-close", this._onConnectionClosed);
 
     this.provider.on("connection-error", (error: any) => {
-      console.error(
-        `WebSocket error for notebook ${this.session.fileId}:`,
+      logger.error(
+        `WebSocket error for notebook ${this.session.fileId}`,
         error,
       );
-
-      // Extract more detailed error information
-      let errorMessage = "Unknown WebSocket error";
-      if (error) {
-        if (error.message) {
-          errorMessage = error.message;
-        } else if (error.type === "error" && error.error) {
-          errorMessage = error.error.message || JSON.stringify(error.error);
-        } else if (typeof error === "string") {
-          errorMessage = error;
-        } else {
-          errorMessage = JSON.stringify(error);
-        }
-      }
-
-      console.error(
-        `Detailed WebSocket error for notebook ${this.session.fileId}:`,
-        errorMessage,
-      );
-
-      // Try to get more information about the WebSocket connection attempt
-      console.error(`[DEBUG] WebSocket URL: ${wsUrlWithParams.toString()}`);
-      console.error(`[DEBUG] Base URL: ${this.baseUrl}`);
-      console.error(`[DEBUG] Session ID: ${this.session.sessionId}`);
-      console.error(`[DEBUG] File ID: ${this.session.fileId}`);
-
       if (!this.connected && this._connectionPromise) {
         this._connectionPromise.reject(error);
         this._connectionPromise = null;
@@ -184,14 +143,14 @@ export class NotebookSession {
     }
     this.connected = false;
     this.synced = false;
-    console.error(`Disconnected from notebook: ${this.session.fileId}`);
+    logger.debug(`Disconnected from notebook: ${this.session.fileId}`);
   }
 
   /**
    * Reconnect to the JupyterLab WebSocket server
    */
   async reconnect(): Promise<void> {
-    console.error(`[DEBUG] Reconnecting to notebook: ${this.session.fileId}`);
+    logger.debug(`Reconnecting to notebook: ${this.session.fileId}`);
 
     // Disconnect first if already connected
     if (this.provider) {
@@ -241,13 +200,9 @@ export class NotebookSession {
    * @returns Promise that resolves when the document is synchronized
    */
   async ensureSynchronized(): Promise<void> {
-    console.error(
-      `[DEBUG] ensureSynchronized() called for notebook: ${this.session.fileId}`,
-    );
-
     // If already synchronized, return immediately
     if (this.synced) {
-      console.error(`[DEBUG] Notebook already synchronized`);
+      logger.debug(`Notebook already synchronized`);
       return;
     }
 
@@ -260,7 +215,7 @@ export class NotebookSession {
 
     // If we have a provider but it's not synced, wait for the sync event
     if (this.provider && !this.synced) {
-      console.error(`[DEBUG] Waiting for notebook synchronization...`);
+      logger.debug(`Waiting for notebook synchronization...`);
 
       return new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -273,7 +228,7 @@ export class NotebookSession {
           if (isSynced) {
             clearTimeout(timeout);
             this.provider?.off("sync", syncHandler);
-            console.error(`[DEBUG] Notebook synchronized successfully`);
+            logger.debug(`Notebook synchronized successfully`);
             resolve();
           }
         };
@@ -284,7 +239,7 @@ export class NotebookSession {
 
     // If we don't have a provider, try to reconnect
     if (!this.provider) {
-      console.error(`[DEBUG] No provider found, attempting to reconnect...`);
+      logger.debug(`No provider found, attempting to reconnect...`);
       await this.reconnect();
 
       // After reconnecting, wait for synchronization
@@ -296,10 +251,6 @@ export class NotebookSession {
    * Get the notebook content from the YNotebook
    */
   getNotebookContent(): any {
-    console.error(
-      `[DEBUG] getNotebookContent() called for notebook: ${this.session.fileId}`,
-    );
-
     // Check if we're connected to the WebSocket server
     if (!this.connected) {
       throw new Error(
@@ -315,61 +266,14 @@ export class NotebookSession {
     }
 
     // Get the notebook content using YNotebook
-    console.error(`[DEBUG] Getting notebook content from YNotebook`);
     const notebookContent = this.yNotebook.toJSON();
-
-    console.error(
-      `[DEBUG] Full raw notebook content:`,
-      JSON.stringify(notebookContent, null, 2),
-    );
-
-    console.error(
-      `[DEBUG] Notebook content summary:`,
-      JSON.stringify(
-        {
-          hasCells: !!notebookContent.cells,
-          cellCount: notebookContent.cells?.length || 0,
-          nbformat: notebookContent.nbformat,
-          nbformat_minor: notebookContent.nbformat_minor,
-          hasMetadata: !!notebookContent.metadata,
-          cellKeys:
-            notebookContent.cells && notebookContent.cells.length > 0
-              ? Object.keys(notebookContent.cells[0])
-              : [],
-        },
-        null,
-        2,
-      ),
-    );
-
-    // Log each cell's structure to identify field names
-    if (notebookContent.cells && notebookContent.cells.length > 0) {
-      console.error(
-        `[DEBUG] First cell structure:`,
-        JSON.stringify(notebookContent.cells[0], null, 2),
-      );
-      console.error(
-        `[DEBUG] All cell IDs:`,
-        notebookContent.cells.map((cell: any, index: number) => {
-          console.error(`[DEBUG] Cell ${index} keys:`, Object.keys(cell));
-          console.error(`[DEBUG] Cell ${index} id field value:`, cell.id);
-          console.error(
-            `[DEBUG] Cell ${index} source field value:`,
-            cell.source,
-          );
-          console.error(
-            `[DEBUG] Cell ${index} cell_type field value:`,
-            cell.cell_type,
-          );
-          return cell.id;
-        }),
-      );
-    }
 
     // Transform the content to match the expected format
     // Note: YNotebook cells don't have 'id' field by default, we need to generate one
     const cells = notebookContent.cells.map((cell: any, index: number) => ({
-      id: cell.id || `cell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${index}`,
+      id:
+        cell.id ||
+        `cell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${index}`,
       content: cell.source,
       type: cell.cell_type,
       metadata: cell.metadata || {},
@@ -432,10 +336,6 @@ export class NotebookSession {
    * @returns ID of the new cell
    */
   addCell(content: string, type: string = "code", position?: number): string {
-    console.error(
-      `[DEBUG] addCell() called with content: "${content}", type: ${type}, position: ${position}`,
-    );
-
     const cellId = `cell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // Create cell data structure
@@ -446,25 +346,15 @@ export class NotebookSession {
       id: cellId,
     };
 
-    console.error(
-      `[DEBUG] Creating cell with data:`,
-      JSON.stringify(cellData, null, 2),
-    );
-
     let newCell;
     if (position !== undefined && position >= 0) {
       // Insert at specific position - YNotebook.insertCell() handles createCell() and transact() internally
-      console.error(`[DEBUG] Inserting cell at position: ${position}`);
       newCell = this.yNotebook.insertCell(position, cellData);
     } else {
       // Append to the end - YNotebook.addCell() handles createCell() and transact() internally
-      console.error(`[DEBUG] Adding cell to end of notebook`);
       newCell = this.yNotebook.addCell(cellData);
     }
 
-    console.error(
-      `[DEBUG] Cell added successfully with ID: ${cellId} -> ${newCell?.id}`,
-    );
     return newCell!.id;
   }
 
@@ -480,7 +370,7 @@ export class NotebookSession {
     );
 
     if (cellIndex === -1) {
-      console.warn(`Cell with ID ${cellId} not found in notebook`);
+      logger.warn(`Cell with ID ${cellId} not found in notebook`);
       return;
     }
 
@@ -498,10 +388,6 @@ export class NotebookSession {
       this.reconnectAttempts++;
       const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
 
-      console.error(
-        `Attempting to reconnect to notebook ${this.session.fileId} in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
-      );
-
       setTimeout(() => {
         if (!this.connected) {
           this.connect().catch((error: any) => {
@@ -515,14 +401,14 @@ export class NotebookSession {
                 errorMessage = JSON.stringify(error);
               }
             }
-            console.error(
+            logger.error(
               `Reconnection failed for notebook ${this.session.fileId}: ${errorMessage}`,
             );
           });
         }
       }, delay);
     } else {
-      console.error(
+      logger.error(
         `Max reconnection attempts reached for notebook ${this.session.fileId}`,
       );
     }
@@ -533,15 +419,11 @@ export class NotebookSession {
    * @param isSynced Whether the document is synchronized
    */
   private _onSync = (isSynced: boolean) => {
-    console.error(`[DEBUG] Notebook sync status: ${isSynced}`);
     this.synced = isSynced;
     if (isSynced && this.connected) {
       // Set document ID after sync, similar to JupyterLab's implementation
       const state = this.yNotebook.ydoc.getMap("state");
       state.set("document_id", this.provider!.roomname);
-      console.error(
-        `[DEBUG] Notebook synchronized and ready, resolving connection promise`,
-      );
 
       // Resolve any pending connection promise
       if (this._connectionPromise) {
@@ -558,7 +440,7 @@ export class NotebookSession {
   private _onConnectionClosed = (event: any) => {
     this.connected = false;
     this.synced = false;
-    console.error(`Disconnected from notebook: ${this.session.fileId}`, event);
+    logger.error(`Disconnected from notebook: ${this.session.fileId}`, event);
     this.handleReconnect();
   };
 }

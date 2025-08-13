@@ -1,6 +1,7 @@
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
 import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
+import { logger } from "../utils/logger.js";
 
 /**
  * DocumentTools provides high-level operations for document management
@@ -71,7 +72,7 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to list documents:", error);
+      logger.error("Failed to list documents:", error);
       throw new Error(
         `Failed to list documents: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -104,7 +105,7 @@ export class DocumentTools {
           try {
             content = JSON.parse(params.content);
           } catch (error) {
-            console.error(
+            logger.error(
               "Failed to parse notebook content in createDocument:",
               error,
             );
@@ -173,7 +174,7 @@ export class DocumentTools {
         );
       }
 
-      const data = await response.json();
+      await response.json();
 
       return {
         content: [
@@ -184,7 +185,7 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to create document:", error);
+      logger.error("Failed to create document:", error);
       throw new Error(
         `Failed to create document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -258,7 +259,7 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to get document info:", error);
+      logger.error("Failed to get document info:", error);
       throw new Error(
         `Failed to get document info: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -307,7 +308,7 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to delete document:", error);
+      logger.error("Failed to delete document:", error);
       throw new Error(
         `Failed to delete document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -367,7 +368,7 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to rename document:", error);
+      logger.error("Failed to rename document:", error);
       throw new Error(
         `Failed to rename document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -437,7 +438,7 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to copy document:", error);
+      logger.error("Failed to copy document:", error);
       throw new Error(
         `Failed to copy document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -527,7 +528,7 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      console.error("Failed to modify document:", error);
+      logger.error("Failed to modify document:", error);
       throw new Error(
         `Failed to modify document: ${error instanceof Error ? error.message : String(error)}`,
       );
