@@ -1,6 +1,7 @@
 import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
 import { DocumentSession } from "./document-session.js";
+import { NotebookSession } from "./notebook-session.js";
 import { cookieManager } from "./cookie-manager.js";
 
 export interface ISessionModel {
@@ -19,6 +20,7 @@ export interface ISessionModel {
 export class JupyterLabAdapter {
   private baseUrl: string;
   private documentSessions: Map<string, DocumentSession>;
+  private notebookSessions: Map<string, NotebookSession>;
   private token: string | undefined;
   private cookieManager: typeof cookieManager;
 
@@ -37,6 +39,7 @@ export class JupyterLabAdapter {
     }
 
     this.documentSessions = new Map();
+    this.notebookSessions = new Map();
     this.cookieManager = cookieManager;
   }
 
@@ -122,6 +125,15 @@ export class JupyterLabAdapter {
   }
 
   /**
+   * Get an existing notebook session
+   * @param fileId File ID of the notebook
+   * @returns NotebookSession or undefined if not found
+   */
+  getNotebookSession(fileId: string): NotebookSession | undefined {
+    return this.notebookSessions.get(fileId);
+  }
+
+  /**
    * Close a document session
    * @param fileId File ID of the document
    */
@@ -130,6 +142,18 @@ export class JupyterLabAdapter {
     if (session) {
       await session.disconnect();
       this.documentSessions.delete(fileId);
+    }
+  }
+
+  /**
+   * Close a notebook session
+   * @param fileId File ID of the notebook
+   */
+  async closeNotebookSession(fileId: string): Promise<void> {
+    const session = this.notebookSessions.get(fileId);
+    if (session) {
+      await session.disconnect();
+      this.notebookSessions.delete(fileId);
     }
   }
 
@@ -145,13 +169,24 @@ export class JupyterLabAdapter {
   }
 
   /**
+   * Close all notebook sessions
+   */
+  async closeAllNotebookSessions(): Promise<void> {
+    const closePromises = Array.from(this.notebookSessions.values()).map(
+      (session) => session.disconnect(),
+    );
+    await Promise.all(closePromises);
+    this.notebookSessions.clear();
+  }
+
+  /**
    * Begin an RTC session for a notebook
    * @param params Parameters for beginning a session
    * @returns MCP response with session information
    */
   async beginNotebookSession(params: { path: string }): Promise<any> {
-    const session = await this.createDocumentSession(params.path, "notebook");
-    const sessionInfo = this.getSessionInfo(session);
+    const session = await this.createNotebookSession(params.path);
+    const sessionInfo = this.getNotebookSessionInfo(session);
 
     return {
       content: [
@@ -174,6 +209,72 @@ export class JupyterLabAdapter {
   }
 
   /**
+   * Create a new notebook session for the given path
+   * @param path Path to the notebook
+   * @returns Promise that resolves to a NotebookSession
+   */
+  async createNotebookSession(path: string): Promise<NotebookSession> {
+    console.error(`[DEBUG] Creating notebook session for path: ${path}`);
+    console.error(`[DEBUG] Using baseUrl: ${this.baseUrl}`);
+
+    try {
+      // Request a document session from JupyterLab
+      console.error(`[DEBUG] About to call requestDocSession`);
+      const session = await this.requestDocSession(path, "notebook");
+      console.error(`[DEBUG] Received session: ${JSON.stringify(session)}`);
+
+      // Check if we already have a session for this notebook
+      if (this.notebookSessions.has(session.fileId)) {
+        console.error(
+          `[DEBUG] Found existing notebook session for fileId: ${session.fileId}`,
+        );
+        const existingSession = this.notebookSessions.get(session.fileId)!;
+        if (!existingSession.isConnected()) {
+          console.error(`[DEBUG] Reconnecting to existing notebook session`);
+          await existingSession.connect();
+        }
+        return existingSession;
+      }
+
+      // Create a new notebook session
+      console.error(
+        `[DEBUG] Creating new notebook session with baseUrl: ${this.baseUrl}`,
+      );
+      const notebookSession = new NotebookSession(
+        session,
+        this.baseUrl,
+        this.token,
+      );
+
+      // Store the original path for later use with contents API
+      (notebookSession as any).originalPath = path;
+      console.error(
+        `[DEBUG] Stored original path: ${path} for session with fileId: ${session.fileId}`,
+      );
+
+      this.notebookSessions.set(session.fileId, notebookSession);
+
+      // Connect to the notebook
+      console.error(`[DEBUG] About to connect to notebook session`);
+      await notebookSession.connect();
+      console.error(`[DEBUG] Successfully connected to notebook session`);
+
+      return notebookSession;
+    } catch (error) {
+      console.error(
+        `[DEBUG] Error in createNotebookSession for path ${path}:`,
+        error,
+      );
+      console.error(`[DEBUG] Error details:`, {
+        name: (error as Error)?.name,
+        message: (error as Error)?.message,
+        stack: (error as Error)?.stack,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * End an RTC session for a notebook
    * @param params Parameters for ending a session
    * @returns MCP response indicating success
@@ -182,8 +283,8 @@ export class JupyterLabAdapter {
     // Find the session for this notebook
     let sessionToClose = null;
     let sessionFileId = null;
-    for (const [fileId, session] of this.documentSessions) {
-      const sessionInfo = this.getSessionInfo(session);
+    for (const [fileId, session] of this.notebookSessions) {
+      const sessionInfo = this.getNotebookSessionInfo(session);
       if (
         sessionInfo.fileId === params.path ||
         sessionInfo.fileId.endsWith(params.path)
@@ -196,7 +297,7 @@ export class JupyterLabAdapter {
 
     if (sessionToClose) {
       await sessionToClose.disconnect();
-      this.documentSessions.delete(sessionFileId!);
+      this.notebookSessions.delete(sessionFileId!);
 
       return {
         content: [
@@ -242,8 +343,8 @@ export class JupyterLabAdapter {
   async queryNotebookSession(params: { path: string }): Promise<any> {
     // Find the session for this notebook
     let foundSession = null;
-    for (const [fileId, session] of this.documentSessions) {
-      const sessionInfo = this.getSessionInfo(session);
+    for (const [, session] of this.notebookSessions) {
+      const sessionInfo = this.getNotebookSessionInfo(session);
       if (
         sessionInfo.fileId === params.path ||
         sessionInfo.fileId.endsWith(params.path)
@@ -254,7 +355,7 @@ export class JupyterLabAdapter {
     }
 
     if (foundSession) {
-      const sessionInfo = this.getSessionInfo(foundSession);
+      const sessionInfo = this.getNotebookSessionInfo(foundSession);
       const notebookContent = foundSession.getNotebookContent();
 
       return {
@@ -363,8 +464,8 @@ export class JupyterLabAdapter {
 
     for (const notebook of notebooks) {
       let foundSession = null;
-      for (const [fileId, session] of this.documentSessions) {
-        const sessionInfo = this.getSessionInfo(session);
+      for (const [, session] of this.notebookSessions) {
+        const sessionInfo = this.getNotebookSessionInfo(session);
         if (
           sessionInfo.fileId === notebook.path ||
           sessionInfo.fileId.endsWith(notebook.path)
@@ -375,7 +476,7 @@ export class JupyterLabAdapter {
       }
 
       if (foundSession) {
-        const sessionInfo = this.getSessionInfo(foundSession);
+        const sessionInfo = this.getNotebookSessionInfo(foundSession);
         const notebookContent = foundSession.getNotebookContent();
         const status = foundSession.isConnected()
           ? "connected"
@@ -553,6 +654,17 @@ export class JupyterLabAdapter {
   private getSessionInfo(session: DocumentSession): ISessionModel {
     // We need to access the private session property
     // This is a workaround to avoid modifying the DocumentSession class
+    return (session as any).session;
+  }
+
+  /**
+   * Get session information from a NotebookSession
+   * @param session NotebookSession
+   * @returns Session model
+   */
+  private getNotebookSessionInfo(session: NotebookSession): ISessionModel {
+    // We need to access the private session property
+    // This is a workaround to avoid modifying the NotebookSession class
     return (session as any).session;
   }
 }

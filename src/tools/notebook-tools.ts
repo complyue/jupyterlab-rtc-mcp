@@ -434,9 +434,8 @@ export class NotebookTools {
     exec?: boolean;
   }): Promise<any> {
     try {
-      const session = await this.jupyterAdapter.createDocumentSession(
+      const session = await this.jupyterAdapter.createNotebookSession(
         params.path,
-        "notebook",
       );
       const notebookContent = session.getNotebookContent();
 
@@ -495,12 +494,11 @@ export class NotebookTools {
       );
       console.error(`[DEBUG] Cell count: ${params.cells.length}`);
 
-      const session = await this.jupyterAdapter.createDocumentSession(
+      const session = await this.jupyterAdapter.createNotebookSession(
         params.path,
-        "notebook",
       );
 
-      console.error(`[DEBUG] Document session created successfully`);
+      console.error(`[DEBUG] Notebook session created successfully`);
 
       const cellIds = [];
 
@@ -565,9 +563,8 @@ export class NotebookTools {
     ranges: Array<{ start: number; end?: number }>;
   }): Promise<any> {
     try {
-      const session = await this.jupyterAdapter.createDocumentSession(
+      const session = await this.jupyterAdapter.createNotebookSession(
         params.path,
-        "notebook",
       );
       const notebookContent = session.getNotebookContent();
 
@@ -618,9 +615,8 @@ export class NotebookTools {
     kernel_name?: string;
   }): Promise<any> {
     try {
-      const session = await this.jupyterAdapter.createDocumentSession(
+      const session = await this.jupyterAdapter.createNotebookSession(
         params.path,
-        "notebook",
       );
 
       // Restart the kernel - pass the original path for contents API calls
@@ -906,6 +902,17 @@ export class NotebookTools {
     console.error(
       `[DEBUG] Executing ${cellIds.length} cells with kernel: ${kernelSession.kernel.id}`,
     );
+    
+    // Log detailed kernel session information for debugging
+    console.error(`[DEBUG] Kernel session details:`, JSON.stringify({
+      kernelId: kernelSession.kernel.id,
+      kernelName: kernelSession.kernel.name,
+      kernelState: kernelSession.kernel.execution_state,
+      sessionId: kernelSession.id,
+      sessionPath: kernelSession.path,
+      sessionName: kernelSession.name,
+      sessionType: kernelSession.type
+    }, null, 2));
 
     // Execute each cell
     for (const cellId of cellIds) {
@@ -968,6 +975,41 @@ export class NotebookTools {
         console.error(
           `[DEBUG] Sending cell execution request to: ${executeUrl}`,
         );
+        console.error(`[DEBUG] Request headers:`, JSON.stringify(executeInit.headers, null, 2));
+        
+        // Check if the kernel is still alive before sending the request
+        const kernelStatusUrl = URLExt.join(
+          settings.baseUrl,
+          "/api/kernels",
+          kernelSession.kernel.id,
+        );
+        
+        try {
+          const statusInit: RequestInit = {
+            method: "GET",
+          };
+          
+          if (token) {
+            statusInit.headers = {
+              ...statusInit.headers,
+              Authorization: `token ${token}`,
+            };
+          }
+          
+          const statusResponse = await ServerConnection.makeRequest(
+            kernelStatusUrl,
+            statusInit,
+            settings,
+          );
+          console.error(`[DEBUG] Kernel status check response: ${statusResponse.status}`);
+          if (statusResponse.status === 404) {
+            console.error(`[DEBUG] Kernel ${kernelSession.kernel.id} not found (404)`);
+            throw new Error(`Kernel ${kernelSession.kernel.id} not found. It may have been terminated.`);
+          }
+        } catch (statusError) {
+          console.error(`[DEBUG] Error checking kernel status:`, statusError);
+        }
+        
         executeResponse = await ServerConnection.makeRequest(
           executeUrl,
           executeInit,
@@ -976,6 +1018,7 @@ export class NotebookTools {
         console.error(
           `[DEBUG] Cell execution response status: ${executeResponse.status}`,
         );
+        console.error(`[DEBUG] Cell execution response headers:`, executeResponse.headers);
       } catch (error) {
         console.error(`[DEBUG] Network error executing cell ${cellId}:`, error);
         throw new Error(
@@ -1422,12 +1465,58 @@ export class NotebookTools {
 
       console.error(`[DEBUG] Calling getNotebookContent()`);
       const notebookContent = session.getNotebookContent();
+
       console.error(
-        `[DEBUG] Notebook content retrieved:`,
+        `[DEBUG] Notebook content retrieved - type: ${typeof notebookContent}`,
+      );
+
+      if (notebookContent && notebookContent.cells) {
+        console.error(
+          `[DEBUG] Notebook cells array type: ${typeof notebookContent.cells}, length: ${notebookContent.cells.length}`,
+        );
+
+        // Log the first few cells to understand their structure
+        const sampleSize = Math.min(3, notebookContent.cells.length);
+        for (let i = 0; i < sampleSize; i++) {
+          const cell = notebookContent.cells[i];
+          console.error(`[DEBUG] Sample cell ${i}:`, {
+            type: typeof cell,
+            keys: Object.keys(cell || {}),
+            id: cell?.id,
+            hasId: Object.prototype.hasOwnProperty.call(cell, "id"),
+            source: cell?.source,
+            hasSource: Object.prototype.hasOwnProperty.call(cell, "source"),
+            cell_type: cell?.cell_type,
+            hasCellType: Object.prototype.hasOwnProperty.call(
+              cell,
+              "cell_type",
+            ),
+            content: cell?.content,
+            hasContent: Object.prototype.hasOwnProperty.call(cell, "content"),
+          });
+        }
+
+        console.error(
+          `[DEBUG] All cell IDs in notebook:`,
+          notebookContent.cells.map((c: any, index: number) => {
+            console.error(
+              `[DEBUG] Cell ${index} full object:`,
+              JSON.stringify(c, null, 2),
+            );
+            return c?.id || `undefined-${index}`;
+          }),
+        );
+      }
+
+      console.error(
+        `[DEBUG] Notebook content summary:`,
         JSON.stringify(
           {
             cellCount: notebookContent.cells?.length || 0,
             cellIds: notebookContent.cells?.map((c: any) => c.id) || [],
+            hasValidCells: notebookContent.cells?.every(
+              (c: any) => c && typeof c === "object",
+            ),
           },
           null,
           2,
@@ -1445,10 +1534,44 @@ export class NotebookTools {
       console.error(
         `[DEBUG] Searching for cell with ID ${cellId} among ${notebookContent.cells.length} cells`,
       );
-      const cell = notebookContent.cells.find((c: any) => c.id === cellId);
+
+      // Try different ways to find the cell
+      let cell = notebookContent.cells.find((c: any) => c.id === cellId);
 
       if (!cell) {
-        console.error(`[DEBUG] Cell with ID ${cellId} not found in notebook`);
+        console.error(
+          `[DEBUG] Cell not found by direct ID match, trying alternative approaches`,
+        );
+
+        // Try to find by string conversion
+        cell = notebookContent.cells.find(
+          (c: any) => String(c.id) === String(cellId),
+        );
+        console.error(`[DEBUG] String conversion match result:`, !!cell);
+
+        // Try to find by partial match
+        if (!cell && cellId.includes("-")) {
+          const partialId = cellId.split("-")[1];
+          cell = notebookContent.cells.find(
+            (c: any) => c.id && c.id.includes(partialId),
+          );
+          console.error(
+            `[DEBUG] Partial match result with '${partialId}':`,
+            !!cell,
+          );
+        }
+
+        // Log all available IDs for debugging
+        console.error(
+          `[DEBUG] All available cell IDs:`,
+          notebookContent.cells.map((c: any) => c.id),
+        );
+      }
+
+      if (!cell) {
+        console.error(
+          `[DEBUG] Cell with ID ${cellId} not found in notebook after all attempts`,
+        );
         console.error(
           `[DEBUG] Available cell IDs:`,
           notebookContent.cells.map((c: any) => c.id),
@@ -1457,9 +1580,34 @@ export class NotebookTools {
       }
 
       console.error(
-        `[DEBUG] Found cell with ID ${cellId}, content length: ${(cell.content || "").length}`,
+        `[DEBUG] Found cell with ID ${cellId}, cell structure:`,
+        JSON.stringify(
+          {
+            id: cell.id,
+            hasContent: Object.prototype.hasOwnProperty.call(cell, "content"),
+            hasSource: Object.prototype.hasOwnProperty.call(cell, "source"),
+            contentLength: (cell.content || "").length,
+            sourceLength: (cell.source || "").length,
+            contentType: typeof cell.content,
+            sourceType: typeof cell.source,
+          },
+          null,
+          2,
+        ),
       );
-      return cell.content || "";
+
+      // Try both 'content' and 'source' fields
+      const cellContent = cell.content || cell.source || "";
+      console.error(
+        `[DEBUG] Returning cell content with length: ${cellContent.length}`,
+      );
+      
+      // Add error handling for empty cell content
+      if (!cellContent.trim()) {
+        console.warn(`[WARN] Cell ${cellId} has empty content after trimming`);
+      }
+      
+      return cellContent;
     } catch (error) {
       console.error(`[DEBUG] Error getting cell content for ${cellId}:`, error);
       throw new Error(

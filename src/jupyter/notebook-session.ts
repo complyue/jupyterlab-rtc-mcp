@@ -2,6 +2,7 @@ import { URLExt } from "@jupyterlab/coreutils";
 import { PromiseDelegate } from "@lumino/coreutils";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
+import { YNotebook } from "@jupyter/ydoc";
 import { cookieManager } from "./cookie-manager.js";
 
 export interface ISessionModel {
@@ -12,17 +13,18 @@ export interface ISessionModel {
 }
 
 /**
- * DocumentSession represents a session with a JupyterLab document
+ * NotebookSession represents a session with a JupyterLab notebook
  *
- * This class handles WebSocket connections, document synchronization,
- * and change tracking for a single document.
+ * This class handles WebSocket connections, notebook synchronization,
+ * and change tracking for a single notebook. It properly uses the
+ * embedded Y.Doc from YNotebook instead of creating a separate Y.Doc.
  */
-export class DocumentSession {
+export class NotebookSession {
   private session: ISessionModel;
   private baseUrl: string;
   private token: string | undefined;
   private cookieManager: typeof cookieManager;
-  private document: Y.Doc;
+  private yNotebook: YNotebook;
   private provider: WebsocketProvider | null;
   private connected: boolean;
   private synced: boolean;
@@ -35,13 +37,20 @@ export class DocumentSession {
     this.baseUrl = baseUrl;
     this.token = token;
     this.cookieManager = cookieManager;
-    this.document = new Y.Doc();
+
+    // Create YNotebook which already has an embedded Y.Doc
+    // This is the key change - we don't create a separate Y.Doc
+    this.yNotebook = new YNotebook();
+
     this.provider = null;
     this.connected = false;
     this.synced = false;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this._connectionPromise = null;
+
+    // Note: We don't initialize document structure immediately
+    // We'll wait for sync with the server to get existing content
   }
 
   /**
@@ -96,11 +105,11 @@ export class DocumentSession {
       `[DEBUG] Attempting WebSocket connection to: ${wsUrlWithParams.toString()}`,
     );
 
-    // Create WebSocket provider
+    // Create WebSocket provider using the embedded Y.Doc from YNotebook
     this.provider = new WebsocketProvider(
       wsUrlWithParams.toString(),
       `${this.session.format}:${this.session.type}:${this.session.fileId}`,
-      this.document,
+      this.yNotebook.ydoc, // Use the embedded Y.Doc from YNotebook
       {
         connect: false,
       },
@@ -111,7 +120,7 @@ export class DocumentSession {
       if (event.status === "connected") {
         this.connected = true;
         this.reconnectAttempts = 0;
-        console.error(`Connected to document: ${this.session.fileId}`);
+        console.error(`Connected to notebook: ${this.session.fileId}`);
         // Don't resolve yet, wait for sync
       }
     });
@@ -123,7 +132,7 @@ export class DocumentSession {
 
     this.provider.on("connection-error", (error: any) => {
       console.error(
-        `WebSocket error for document ${this.session.fileId}:`,
+        `WebSocket error for notebook ${this.session.fileId}:`,
         error,
       );
 
@@ -142,7 +151,7 @@ export class DocumentSession {
       }
 
       console.error(
-        `Detailed WebSocket error for document ${this.session.fileId}:`,
+        `Detailed WebSocket error for notebook ${this.session.fileId}:`,
         errorMessage,
       );
 
@@ -175,14 +184,14 @@ export class DocumentSession {
     }
     this.connected = false;
     this.synced = false;
-    console.error(`Disconnected from document: ${this.session.fileId}`);
+    console.error(`Disconnected from notebook: ${this.session.fileId}`);
   }
 
   /**
    * Reconnect to the JupyterLab WebSocket server
    */
   async reconnect(): Promise<void> {
-    console.error(`[DEBUG] Reconnecting to document: ${this.session.fileId}`);
+    console.error(`[DEBUG] Reconnecting to notebook: ${this.session.fileId}`);
 
     // Disconnect first if already connected
     if (this.provider) {
@@ -200,10 +209,17 @@ export class DocumentSession {
   }
 
   /**
-   * Get the Yjs document
+   * Get the Yjs document (embedded in YNotebook)
    */
   getDocument(): Y.Doc {
-    return this.document;
+    return this.yNotebook.ydoc;
+  }
+
+  /**
+   * Get the YNotebook
+   */
+  getYNotebook(): YNotebook {
+    return this.yNotebook;
   }
 
   /**
@@ -226,30 +242,30 @@ export class DocumentSession {
    */
   async ensureSynchronized(): Promise<void> {
     console.error(
-      `[DEBUG] ensureSynchronized() called for document: ${this.session.fileId}`,
+      `[DEBUG] ensureSynchronized() called for notebook: ${this.session.fileId}`,
     );
 
     // If already synchronized, return immediately
     if (this.synced) {
-      console.error(`[DEBUG] Document already synchronized`);
+      console.error(`[DEBUG] Notebook already synchronized`);
       return;
     }
 
     // If not connected, throw an error
     if (!this.connected) {
       throw new Error(
-        `Document session is not connected to the WebSocket server.`,
+        `Notebook session is not connected to the WebSocket server.`,
       );
     }
 
     // If we have a provider but it's not synced, wait for the sync event
     if (this.provider && !this.synced) {
-      console.error(`[DEBUG] Waiting for document synchronization...`);
+      console.error(`[DEBUG] Waiting for notebook synchronization...`);
 
       return new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(
-            new Error(`Document synchronization timed out after 30 seconds.`),
+            new Error(`Notebook synchronization timed out after 30 seconds.`),
           );
         }, 30000);
 
@@ -257,7 +273,7 @@ export class DocumentSession {
           if (isSynced) {
             clearTimeout(timeout);
             this.provider?.off("sync", syncHandler);
-            console.error(`[DEBUG] Document synchronized successfully`);
+            console.error(`[DEBUG] Notebook synchronized successfully`);
             resolve();
           }
         };
@@ -277,89 +293,201 @@ export class DocumentSession {
   }
 
   /**
-   * Get the document content from the Yjs document
+   * Get the notebook content from the YNotebook
    */
-  getDocumentContent(): any {
+  getNotebookContent(): any {
     console.error(
-      `[DEBUG] getDocumentContent() called for document: ${this.session.fileId}`,
+      `[DEBUG] getNotebookContent() called for notebook: ${this.session.fileId}`,
     );
 
     // Check if we're connected to the WebSocket server
     if (!this.connected) {
       throw new Error(
-        `Document session is not connected to the WebSocket server.`,
+        `Notebook session is not connected to the WebSocket server.`,
       );
     }
 
     // Check if the document is synchronized
     if (!this.synced) {
       throw new Error(
-        `Document is not yet synchronized. Please wait for synchronization to complete.`,
+        `Notebook is not yet synchronized. Please wait for synchronization to complete.`,
       );
     }
 
-    // Get the document content
-    console.error(`[DEBUG] Getting document content from Yjs document`);
-    const content = this.document.getMap("content");
-    const metadata = this.document.getMap("metadata");
+    // Get the notebook content using YNotebook
+    console.error(`[DEBUG] Getting notebook content from YNotebook`);
+    const notebookContent = this.yNotebook.toJSON();
 
-    const documentContent = {
-      content: content.toJSON(),
-      metadata: metadata.toJSON(),
+    console.error(
+      `[DEBUG] Full raw notebook content:`,
+      JSON.stringify(notebookContent, null, 2),
+    );
+
+    console.error(
+      `[DEBUG] Notebook content summary:`,
+      JSON.stringify(
+        {
+          hasCells: !!notebookContent.cells,
+          cellCount: notebookContent.cells?.length || 0,
+          nbformat: notebookContent.nbformat,
+          nbformat_minor: notebookContent.nbformat_minor,
+          hasMetadata: !!notebookContent.metadata,
+          cellKeys:
+            notebookContent.cells && notebookContent.cells.length > 0
+              ? Object.keys(notebookContent.cells[0])
+              : [],
+        },
+        null,
+        2,
+      ),
+    );
+
+    // Log each cell's structure to identify field names
+    if (notebookContent.cells && notebookContent.cells.length > 0) {
+      console.error(
+        `[DEBUG] First cell structure:`,
+        JSON.stringify(notebookContent.cells[0], null, 2),
+      );
+      console.error(
+        `[DEBUG] All cell IDs:`,
+        notebookContent.cells.map((cell: any, index: number) => {
+          console.error(`[DEBUG] Cell ${index} keys:`, Object.keys(cell));
+          console.error(`[DEBUG] Cell ${index} id field value:`, cell.id);
+          console.error(
+            `[DEBUG] Cell ${index} source field value:`,
+            cell.source,
+          );
+          console.error(
+            `[DEBUG] Cell ${index} cell_type field value:`,
+            cell.cell_type,
+          );
+          return cell.id;
+        }),
+      );
+    }
+
+    // Transform the content to match the expected format
+    // Note: YNotebook cells don't have 'id' field by default, we need to generate one
+    const cells = notebookContent.cells.map((cell: any, index: number) => ({
+      id: cell.id || `cell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${index}`,
+      content: cell.source,
+      type: cell.cell_type,
+      metadata: cell.metadata || {},
+    }));
+
+    return {
+      cells,
+      metadata: notebookContent.metadata || {},
+    };
+  }
+
+  /**
+   * Update cell content in the notebook
+   * @param cellId ID of the cell to update
+   * @param content New content for the cell
+   */
+  updateCellContent(cellId: string, content: string): void {
+    // Find the cell by ID in the YNotebook
+    const notebookContent = this.yNotebook.toJSON();
+    const cellIndex = notebookContent.cells.findIndex(
+      (cell: any) => cell.id === cellId,
+    );
+
+    if (cellIndex !== -1) {
+      // Update the cell content using YNotebook's setSource method
+      const cell = this.yNotebook.getCell(cellIndex);
+      this.yNotebook.ydoc.transact(() => {
+        // Use the cell's setSource method if available
+        if (typeof cell.setSource === "function") {
+          cell.setSource(content);
+        } else {
+          // Fallback to recreating the cell
+          const updatedCell = {
+            ...cell.toJSON(),
+            source: content,
+          };
+          // Remove the old cell and insert the updated one
+          this.yNotebook.deleteCell(cellIndex);
+          this.yNotebook.insertCell(cellIndex, updatedCell);
+        }
+      });
+    } else {
+      // Create a new cell if it doesn't exist
+      this.yNotebook.ydoc.transact(() => {
+        const newCell = {
+          cell_type: "code",
+          source: content,
+          metadata: {},
+          id: cellId,
+        };
+        this.yNotebook.addCell(newCell);
+      });
+    }
+  }
+  /**
+   * Add a new cell to the notebook
+   * @param content Content for the new cell
+   * @param type Cell type ('code' or 'markdown')
+   * @param position Position to insert the cell (default: end)
+   * @returns ID of the new cell
+   */
+  addCell(content: string, type: string = "code", position?: number): string {
+    console.error(
+      `[DEBUG] addCell() called with content: "${content}", type: ${type}, position: ${position}`,
+    );
+
+    const cellId = `cell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create cell data structure
+    const cellData = {
+      cell_type: type,
+      source: content,
+      metadata: {},
+      id: cellId,
     };
 
     console.error(
-      `[DEBUG] Full raw document content:`,
-      JSON.stringify(documentContent, null, 2),
+      `[DEBUG] Creating cell with data:`,
+      JSON.stringify(cellData, null, 2),
     );
 
-    return documentContent;
+    let newCell;
+    if (position !== undefined && position >= 0) {
+      // Insert at specific position - YNotebook.insertCell() handles createCell() and transact() internally
+      console.error(`[DEBUG] Inserting cell at position: ${position}`);
+      newCell = this.yNotebook.insertCell(position, cellData);
+    } else {
+      // Append to the end - YNotebook.addCell() handles createCell() and transact() internally
+      console.error(`[DEBUG] Adding cell to end of notebook`);
+      newCell = this.yNotebook.addCell(cellData);
+    }
+
+    console.error(
+      `[DEBUG] Cell added successfully with ID: ${cellId} -> ${newCell?.id}`,
+    );
+    return newCell!.id;
   }
 
   /**
-   * Update document content in the Yjs document
-   * @param key Key of the content to update
-   * @param value New value for the content
+   * Delete a cell from the notebook
+   * @param cellId ID of the cell to delete
    */
-  updateContent(key: string, value: any): void {
-    // Update the content using Yjs transaction
-    this.document.transact(() => {
-      const content = this.document.getMap("content");
-      content.set(key, value);
+  deleteCell(cellId: string): void {
+    // Find the cell by ID in the YNotebook
+    const notebookContent = this.yNotebook.toJSON();
+    const cellIndex = notebookContent.cells.findIndex(
+      (cell: any) => cell.id === cellId,
+    );
+
+    if (cellIndex === -1) {
+      console.warn(`Cell with ID ${cellId} not found in notebook`);
+      return;
+    }
+
+    // Delete the cell using YNotebook's deleteCell method
+    this.yNotebook.ydoc.transact(() => {
+      this.yNotebook.deleteCell(cellIndex);
     });
-  }
-
-  /**
-   * Update document metadata in the Yjs document
-   * @param key Key of the metadata to update
-   * @param value New value for the metadata
-   */
-  updateMetadata(key: string, value: any): void {
-    // Update the metadata using Yjs transaction
-    this.document.transact(() => {
-      const metadata = this.document.getMap("metadata");
-      metadata.set(key, value);
-    });
-  }
-
-  /**
-   * Get document content by key
-   * @param key Key of the content to retrieve
-   * @returns The content value
-   */
-  getContent(key: string): any {
-    const content = this.document.getMap("content");
-    return content.get(key);
-  }
-
-  /**
-   * Get document metadata by key
-   * @param key Key of the metadata to retrieve
-   * @returns The metadata value
-   */
-  getMetadata(key: string): any {
-    const metadata = this.document.getMap("metadata");
-    return metadata.get(key);
   }
 
   /**
@@ -371,7 +499,7 @@ export class DocumentSession {
       const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
 
       console.error(
-        `Attempting to reconnect to document ${this.session.fileId} in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+        `Attempting to reconnect to notebook ${this.session.fileId} in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
       );
 
       setTimeout(() => {
@@ -388,14 +516,14 @@ export class DocumentSession {
               }
             }
             console.error(
-              `Reconnection failed for document ${this.session.fileId}: ${errorMessage}`,
+              `Reconnection failed for notebook ${this.session.fileId}: ${errorMessage}`,
             );
           });
         }
       }, delay);
     } else {
       console.error(
-        `Max reconnection attempts reached for document ${this.session.fileId}`,
+        `Max reconnection attempts reached for notebook ${this.session.fileId}`,
       );
     }
   }
@@ -405,14 +533,14 @@ export class DocumentSession {
    * @param isSynced Whether the document is synchronized
    */
   private _onSync = (isSynced: boolean) => {
-    console.error(`[DEBUG] Document sync status: ${isSynced}`);
+    console.error(`[DEBUG] Notebook sync status: ${isSynced}`);
     this.synced = isSynced;
     if (isSynced && this.connected) {
       // Set document ID after sync, similar to JupyterLab's implementation
-      const state = this.document.getMap("state");
+      const state = this.yNotebook.ydoc.getMap("state");
       state.set("document_id", this.provider!.roomname);
       console.error(
-        `[DEBUG] Document synchronized and ready, resolving connection promise`,
+        `[DEBUG] Notebook synchronized and ready, resolving connection promise`,
       );
 
       // Resolve any pending connection promise
@@ -430,7 +558,7 @@ export class DocumentSession {
   private _onConnectionClosed = (event: any) => {
     this.connected = false;
     this.synced = false;
-    console.error(`Disconnected from document: ${this.session.fileId}`, event);
+    console.error(`Disconnected from notebook: ${this.session.fileId}`, event);
     this.handleReconnect();
   };
 }
