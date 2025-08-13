@@ -239,9 +239,102 @@ Restart the kernel of a specified notebook, with options to clear contents and e
 - `path` (required): Path to the notebook file
 - `clear_contents` (optional, default: false): Whether to clear cell contents after restart
 - `exec` (optional, default: true): Whether to execute cells after restart
+- `kernel_name` (optional): Name of the kernel to use (from list_available_kernels). If not specified, uses the current kernel or creates a new one with the default kernel.
+**Behavior:**
+- If an active kernel exists for the notebook, it will be restarted
+- If no active kernel exists, a new kernel will be started and then restarted
+- The tool handles kernel creation and restart in a single operation
+- After kernel restart, cell contents can be cleared and cells can be executed based on parameters
 
 **Returns:**
 Success message indicating kernel restart status and whether contents were cleared and cells were executed.
+
+**Example:**
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Successfully restarted notebook kernel and executed cells"
+    }
+  ]
+}
+```
+
+**Error Handling:**
+- If the notebook file doesn't exist, returns an appropriate error
+- If kernel creation fails, returns detailed error information
+- If kernel restart fails, returns detailed error information
+
+#### list_available_kernels
+List all available kernels on the JupyterLab server.
+
+**Parameters:**
+None
+
+**Returns:**
+A JSON object with available kernel information:
+- `kernels`: Array of kernel objects
+  - `name`: Kernel name (used for assignment)
+  - `display_name`: Human-readable kernel name
+  - `language`: Programming language of the kernel
+  - `path`: Path to kernel resources
+
+**Example:**
+```json
+{
+  "kernels": [
+    {
+      "name": "python3",
+      "display_name": "Python 3",
+      "language": "python",
+      "path": "/usr/local/share/jupyter/kernels/python3"
+    },
+    {
+      "name": "ir",
+      "display_name": "R",
+      "language": "r",
+      "path": "/usr/local/share/jupyter/kernels/ir"
+    }
+  ]
+}
+```
+
+**Error Handling:**
+- If the server is not accessible, returns appropriate network error
+- If the kernelspecs API is not available, returns detailed error information
+
+#### assign_nb_kernel
+Assign a specific kernel to a notebook.
+
+**Parameters:**
+- `path` (required): Path to the notebook file
+- `kernel_name` (required): Name of the kernel to assign (from list_available_kernels)
+
+**Returns:**
+Success message indicating kernel assignment status.
+
+**Example:**
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Successfully assigned kernel 'python3' to notebook 'example.ipynb'"
+    }
+  ]
+}
+```
+
+**Behavior:**
+- If an active session exists for the notebook, updates the session with the new kernel
+- If no active session exists, creates a new session with the specified kernel
+- The kernel must be available on the server (see list_available_kernels)
+
+**Error Handling:**
+- If the notebook file doesn't exist, returns an appropriate error
+- If the specified kernel is not available, returns detailed error information
+- If session creation or update fails, returns detailed error information
 
 ### Document Management
 

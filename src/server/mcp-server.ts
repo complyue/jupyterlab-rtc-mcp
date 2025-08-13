@@ -266,7 +266,6 @@ export class JupyterLabMCPServer {
         );
       },
     );
-
     // Tool to restart notebook kernel
     this.server.tool(
       "restart_nb_kernel",
@@ -281,6 +280,10 @@ export class JupyterLabMCPServer {
           .boolean()
           .default(true)
           .describe("Whether to execute cells after restart"),
+        kernel_name: z
+          .string()
+          .optional()
+          .describe("Name of the kernel to use (from list_available_kernels)"),
       },
       async (args) => {
         return await this.notebookTools.restartNotebookKernel(
@@ -288,6 +291,39 @@ export class JupyterLabMCPServer {
             path: string;
             clear_contents?: boolean;
             exec?: boolean;
+            kernel_name?: string;
+          },
+        );
+      },
+    );
+
+    // Tool to list available kernels
+    this.server.tool(
+      "list_available_kernels",
+      "List all available kernels on the JupyterLab server",
+      {},
+      async () => {
+        return await this.notebookTools.listAvailableKernels();
+      },
+    );
+
+    // Tool to assign a kernel to a notebook
+    this.server.tool(
+      "assign_nb_kernel",
+      "Assign a specific kernel to a notebook",
+      {
+        path: z.string().describe("Path to the notebook file"),
+        kernel_name: z
+          .string()
+          .describe(
+            "Name of the kernel to assign (from list_available_kernels)",
+          ),
+      },
+      async (args) => {
+        return await this.notebookTools.assignNotebookKernel(
+          args as {
+            path: string;
+            kernel_name: string;
           },
         );
       },

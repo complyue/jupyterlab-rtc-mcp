@@ -594,6 +594,7 @@ export class NotebookTools {
     path: string;
     clear_contents?: boolean;
     exec?: boolean;
+    kernel_name?: string;
   }): Promise<any> {
     try {
       const session = await this.jupyterAdapter.createDocumentSession(
@@ -601,8 +602,8 @@ export class NotebookTools {
         "notebook",
       );
 
-      // Restart the kernel
-      await this.restartKernel(session);
+      // Restart the kernel - pass the original path for contents API calls
+      await this.restartKernel(session, params.kernel_name, params.path);
 
       // Clear cell contents if requested
       if (params.clear_contents) {
@@ -631,7 +632,7 @@ export class NotebookTools {
         content: [
           {
             type: "text",
-            text: `Successfully restarted notebook kernel${params.clear_contents ? " and cleared contents" : ""}${params.exec !== false ? " and executed cells" : ""}`,
+            text: `Successfully restarted notebook kernel${params.kernel_name ? ` (${params.kernel_name})` : ""}${params.clear_contents ? " and cleared contents" : ""}${params.exec !== false ? " and executed cells" : ""}`,
           },
         ],
       };
@@ -643,11 +644,6 @@ export class NotebookTools {
     }
   }
 
-  /**
-   * Execute cells in a notebook
-   * @param session Document session
-   * @param cellIds Array of cell IDs to execute
-   */
   /**
    * Execute cells in a notebook
    * @param session Document session
@@ -954,7 +950,12 @@ export class NotebookTools {
       console.error(`[DEBUG] Successfully executed cell ${cellId}`);
     }
   }
-  private async restartKernel(session: any): Promise<void> {
+
+  private async restartKernel(
+    session: any,
+    kernelName?: string,
+    originalPath?: string,
+  ): Promise<void> {
     try {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
@@ -998,8 +999,11 @@ export class NotebookTools {
       if (sessionsData.length > 0) {
         try {
           sessionsData = JSON.parse(sessionsData);
-        } catch (error) {
-          console.error("Not a JSON response body in restartKernel:", error);
+        } catch (parseError) {
+          console.error(
+            "Not a JSON response body in restartKernel:",
+            parseError,
+          );
           console.error("Response:", sessionsResponse);
         }
       }
@@ -1021,10 +1025,269 @@ export class NotebookTools {
       );
 
       if (!kernelSession || !kernelSession.kernel) {
-        throw new Error("No active kernel found for this notebook");
+        // No active kernel found, try to start a new one
+        console.error(
+          `[DEBUG] No active kernel found, attempting to start a new kernel for ${sessionInfo.fileId}`,
+        );
+
+        try {
+          // First, let's get the notebook content to ensure it exists
+          // DEBUG: Log the path resolution issue
+          console.error(
+            `[DEBUG] Using sessionInfo.fileId for contents API: ${sessionInfo.fileId}`,
+          );
+          console.error(
+            `[DEBUG] This might be the issue - fileId is a UUID but contents API expects a path`,
+          );
+          console.error(`[DEBUG] Original path provided: ${originalPath}`);
+
+          // FIX: Use originalPath if available, otherwise fall back to fileId
+          const pathToUse = originalPath || sessionInfo.fileId;
+          console.error(`[DEBUG] Using path for contents API: ${pathToUse}`);
+
+          const contentUrl = URLExt.join(
+            settings.baseUrl,
+            "/api/contents",
+            pathToUse,
+          );
+          console.error(`[DEBUG] Constructed content URL: ${contentUrl}`);
+          const contentInit: RequestInit = {
+            method: "GET",
+          };
+
+          if (token) {
+            contentInit.headers = {
+              ...contentInit.headers,
+              Authorization: `token ${token}`,
+            };
+          }
+
+          const contentResponse = await ServerConnection.makeRequest(
+            contentUrl,
+            contentInit,
+            settings,
+          );
+
+          if (!contentResponse.ok) {
+            throw new Error(
+              `Failed to get notebook content: ${contentResponse.status} ${contentResponse.statusText}`,
+            );
+          }
+
+          // Create a new session for the notebook
+          const newSessionUrl = URLExt.join(settings.baseUrl, "/api/sessions");
+          const newSessionInit: RequestInit = {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              // FIX: Use originalPath if available, otherwise fall back to fileId
+              path: originalPath || sessionInfo.fileId,
+              type: "notebook",
+              kernel: {
+                name: kernelName || "python3", // Use specified kernel or default
+              },
+            }),
+          };
+
+          if (token) {
+            newSessionInit.headers = {
+              ...newSessionInit.headers,
+              Authorization: `token ${token}`,
+            };
+          }
+
+          console.error(
+            `[DEBUG] Creating new session for notebook: ${sessionInfo.fileId} with kernel: ${kernelName || "python3"}`,
+          );
+
+          const newSessionResponse = await ServerConnection.makeRequest(
+            newSessionUrl,
+            newSessionInit,
+            settings,
+          );
+
+          if (!newSessionResponse.ok) {
+            const errorText = await newSessionResponse.text();
+            console.error(`[DEBUG] Session creation failed: ${errorText}`);
+            throw new Error(
+              `Failed to create new kernel session: ${newSessionResponse.status} ${newSessionResponse.statusText}`,
+            );
+          }
+
+          const newSessionData = await newSessionResponse.json();
+          console.error(
+            `[DEBUG] New session created: ${JSON.stringify(newSessionData)}`,
+          );
+
+          if (!newSessionData.kernel) {
+            throw new Error("New session created but no kernel was started");
+          }
+
+          // Use the new kernel session
+          const newKernelSession = {
+            ...newSessionData,
+            kernel: newSessionData.kernel,
+          };
+
+          // Restart the newly created kernel
+          const restartUrl = URLExt.join(
+            settings.baseUrl,
+            "/api/kernels",
+            newKernelSession.kernel.id,
+            "restart",
+          );
+
+          const restartInit: RequestInit = {
+            method: "POST",
+          };
+
+          if (token) {
+            restartInit.headers = {
+              ...restartInit.headers,
+              Authorization: `token ${token}`,
+            };
+          }
+
+          let restartResponse: Response;
+          try {
+            restartResponse = await ServerConnection.makeRequest(
+              restartUrl,
+              restartInit,
+              settings,
+            );
+          } catch (error) {
+            console.error(
+              "Network error in restartKernel (restart new kernel):",
+              error,
+            );
+            throw new Error(
+              `Network error: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+
+          if (!restartResponse.ok) {
+            throw new Error(
+              `Failed to restart new kernel: ${restartResponse.status} ${restartResponse.statusText}`,
+            );
+          }
+
+          console.error(
+            `[DEBUG] Successfully started and restarted new kernel for ${sessionInfo.fileId}`,
+          );
+          return;
+        } catch (kernelError) {
+          console.error("Failed to start new kernel:", kernelError);
+          throw new Error(
+            `No active kernel found for this notebook and failed to start a new one: ${kernelError instanceof Error ? kernelError.message : String(kernelError)}`,
+          );
+        }
       }
 
-      // Restart the kernel
+      // If a specific kernel name is requested and different from current, update the session
+      if (kernelName && kernelSession.kernel.name !== kernelName) {
+        const updateUrl = URLExt.join(
+          settings.baseUrl,
+          "/api/sessions",
+          kernelSession.id,
+        );
+        const updateInit: RequestInit = {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            kernel: {
+              name: kernelName,
+            },
+          }),
+        };
+
+        if (token) {
+          updateInit.headers = {
+            ...updateInit.headers,
+            Authorization: `token ${token}`,
+          };
+        }
+
+        const updateResponse = await ServerConnection.makeRequest(
+          updateUrl,
+          updateInit,
+          settings,
+        );
+
+        if (!updateResponse.ok) {
+          throw new Error(
+            `Failed to update kernel to ${kernelName}: ${updateResponse.status} ${updateResponse.statusText}`,
+          );
+        }
+
+        // Get the updated session
+        const updatedSessionsResponse = await ServerConnection.makeRequest(
+          sessionsUrl,
+          sessionsInit,
+          settings,
+        );
+        const updatedSessionsData = await updatedSessionsResponse.json();
+
+        const updatedKernelSession = updatedSessionsData.find(
+          (s: any) => s.id === kernelSession.id,
+        );
+
+        if (!updatedKernelSession || !updatedKernelSession.kernel) {
+          throw new Error("Failed to get updated kernel session");
+        }
+
+        // Restart the updated kernel
+        const restartUrl = URLExt.join(
+          settings.baseUrl,
+          "/api/kernels",
+          updatedKernelSession.kernel.id,
+          "restart",
+        );
+
+        const restartInit: RequestInit = {
+          method: "POST",
+        };
+
+        if (token) {
+          restartInit.headers = {
+            ...restartInit.headers,
+            Authorization: `token ${token}`,
+          };
+        }
+
+        let restartResponse: Response;
+        try {
+          restartResponse = await ServerConnection.makeRequest(
+            restartUrl,
+            restartInit,
+            settings,
+          );
+        } catch (error) {
+          console.error(
+            "Network error in restartKernel (restart updated kernel):",
+            error,
+          );
+          throw new Error(
+            `Network error: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+
+        if (!restartResponse.ok) {
+          throw new Error(
+            `Failed to restart updated kernel: ${restartResponse.status} ${restartResponse.statusText}`,
+          );
+        }
+
+        console.error(
+          `[DEBUG] Successfully updated kernel to ${kernelName} and restarted for ${sessionInfo.fileId}`,
+        );
+        return;
+      }
+
+      // Restart the existing kernel
       const restartUrl = URLExt.join(
         settings.baseUrl,
         "/api/kernels",
@@ -1052,7 +1315,7 @@ export class NotebookTools {
         );
       } catch (error) {
         console.error(
-          "Network error in restartKernel (restart kernel):",
+          "Network error in restartKernel (restart existing kernel):",
           error,
         );
         throw new Error(
@@ -1109,6 +1372,282 @@ export class NotebookTools {
       console.error(`[DEBUG] Error getting cell content for ${cellId}:`, error);
       throw new Error(
         `Failed to get cell content for ${cellId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * List all available kernels on the JupyterLab server
+   * @returns MCP response with list of available kernels
+   */
+  async listAvailableKernels(): Promise<any> {
+    try {
+      const { ServerConnection } = await import("@jupyterlab/services");
+      const { URLExt } = await import("@jupyterlab/coreutils");
+
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
+
+      // Get available kernels
+      const kernelsUrl = URLExt.join(settings.baseUrl, "/api/kernelspecs");
+      const kernelsInit: RequestInit = {
+        method: "GET",
+      };
+
+      // Add authorization header if token is provided
+      const token = process.env.JUPYTERLAB_TOKEN;
+      if (token) {
+        kernelsInit.headers = {
+          ...kernelsInit.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      let kernelsResponse: Response;
+      try {
+        kernelsResponse = await ServerConnection.makeRequest(
+          kernelsUrl,
+          kernelsInit,
+          settings,
+        );
+      } catch (error) {
+        console.error("Network error in listAvailableKernels:", error);
+        throw new Error(
+          `Network error: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      let kernelsData: any = await kernelsResponse.text();
+
+      if (kernelsData.length > 0) {
+        try {
+          kernelsData = JSON.parse(kernelsData);
+        } catch (error) {
+          console.error(
+            "Not a JSON response body in listAvailableKernels:",
+            error,
+          );
+          console.error("Response:", kernelsResponse);
+        }
+      }
+
+      if (!kernelsResponse.ok) {
+        throw new Error(
+          `Server returned ${kernelsResponse.status}: ${kernelsData.message || kernelsData}`,
+        );
+      }
+
+      // Format the kernel information
+      const kernels = [];
+      if (kernelsData.kernelspecs) {
+        for (const [name, spec] of Object.entries(
+          kernelsData.kernelspecs as any,
+        )) {
+          kernels.push({
+            name: name,
+            display_name: (spec as any).display_name,
+            language: (spec as any).language,
+            path: (spec as any).resource_dir,
+          });
+        }
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ kernels }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      console.error("Failed to list available kernels:", error);
+      throw new Error(
+        `Failed to list available kernels: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Assign a specific kernel to a notebook
+   * @param params Parameters for assigning kernel
+   * @returns MCP response indicating success
+   */
+  async assignNotebookKernel(params: {
+    path: string;
+    kernel_name: string;
+  }): Promise<any> {
+    try {
+      const { ServerConnection } = await import("@jupyterlab/services");
+      const { URLExt } = await import("@jupyterlab/coreutils");
+
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
+
+      // First, check if the notebook exists
+      const contentUrl = URLExt.join(
+        settings.baseUrl,
+        "/api/contents",
+        params.path,
+      );
+      const contentInit: RequestInit = {
+        method: "GET",
+      };
+
+      // Add authorization header if token is provided
+      const token = process.env.JUPYTERLAB_TOKEN;
+      if (token) {
+        contentInit.headers = {
+          ...contentInit.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      const contentResponse = await ServerConnection.makeRequest(
+        contentUrl,
+        contentInit,
+        settings,
+      );
+
+      if (!contentResponse.ok) {
+        throw new Error(
+          `Failed to get notebook content: ${contentResponse.status} ${contentResponse.statusText}`,
+        );
+      }
+
+      // Check if there's an existing session for this notebook
+      const sessionsUrl = URLExt.join(settings.baseUrl, "/api/sessions");
+      const sessionsInit: RequestInit = {
+        method: "GET",
+      };
+
+      if (token) {
+        sessionsInit.headers = {
+          ...sessionsInit.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      const sessionsResponse = await ServerConnection.makeRequest(
+        sessionsUrl,
+        sessionsInit,
+        settings,
+      );
+
+      if (!sessionsResponse.ok) {
+        throw new Error(
+          `Failed to get sessions: ${sessionsResponse.status} ${sessionsResponse.statusText}`,
+        );
+      }
+
+      const sessionsData = await sessionsResponse.json();
+
+      // Find existing session for this notebook
+      const existingSession = sessionsData.find(
+        (s: any) =>
+          s.path === params.path ||
+          s.path?.endsWith(params.path) ||
+          s.notebook?.path === params.path ||
+          s.notebook?.path?.endsWith(params.path),
+      );
+
+      if (existingSession) {
+        // Update existing session with new kernel
+        const updateUrl = URLExt.join(
+          settings.baseUrl,
+          "/api/sessions",
+          existingSession.id,
+        );
+        const updateInit: RequestInit = {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            kernel: {
+              name: params.kernel_name,
+            },
+          }),
+        };
+
+        if (token) {
+          updateInit.headers = {
+            ...updateInit.headers,
+            Authorization: `token ${token}`,
+          };
+        }
+
+        const updateResponse = await ServerConnection.makeRequest(
+          updateUrl,
+          updateInit,
+          settings,
+        );
+
+        if (!updateResponse.ok) {
+          throw new Error(
+            `Failed to update kernel: ${updateResponse.status} ${updateResponse.statusText}`,
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully assigned kernel '${params.kernel_name}' to notebook '${params.path}'`,
+            },
+          ],
+        };
+      } else {
+        // Create new session with specified kernel
+        const createUrl = URLExt.join(settings.baseUrl, "/api/sessions");
+        const createInit: RequestInit = {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            path: params.path,
+            type: "notebook",
+            kernel: {
+              name: params.kernel_name,
+            },
+          }),
+        };
+
+        if (token) {
+          createInit.headers = {
+            ...createInit.headers,
+            Authorization: `token ${token}`,
+          };
+        }
+
+        const createResponse = await ServerConnection.makeRequest(
+          createUrl,
+          createInit,
+          settings,
+        );
+
+        if (!createResponse.ok) {
+          throw new Error(
+            `Failed to create session with kernel: ${createResponse.status} ${createResponse.statusText}`,
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully created new session with kernel '${params.kernel_name}' for notebook '${params.path}'`,
+            },
+          ],
+        };
+      }
+    } catch (error) {
+      console.error("Failed to assign notebook kernel:", error);
+      throw new Error(
+        `Failed to assign notebook kernel: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
