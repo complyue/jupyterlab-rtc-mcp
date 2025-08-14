@@ -79,7 +79,14 @@ export class NotebookSession {
     }
 
     // Create a new connection promise
-    this._connectionPromise = new PromiseDelegate<void>();
+    const _connectionPromise = (this._connectionPromise =
+      new PromiseDelegate<void>());
+    _connectionPromise.promise.catch((error) => {
+      logger.error(
+        `Unhandled connection promise rejection for notebook ${this.session.fileId}:`,
+        error,
+      );
+    });
 
     const wsUrl = URLExt.join(
       this.baseUrl.replace(/^http/, "ws"),
@@ -130,20 +137,41 @@ export class NotebookSession {
         `WebSocket error for notebook ${this.session.fileId}`,
         error,
       );
-      if (!this.connected && this._connectionPromise) {
-        this._connectionPromise.reject(error);
-        this._connectionPromise = null;
+      logger.debug(
+        `Connection status: ${this.connected}, Connection promise exists: ${!!_connectionPromise}`,
+      );
+
+      if (!this.connected && _connectionPromise) {
+        logger.debug(
+          `Rejecting connection promise for notebook ${this.session.fileId}`,
+        );
+        _connectionPromise.reject(error);
+      } else if (this.connected) {
+        logger.debug(
+          `WebSocket error occurred after connection was established for notebook ${this.session.fileId}`,
+        );
+        // Handle the error appropriately - e.g., trigger reconnection
+        this.connected = false;
+        this.synced = false;
+        this.kernelSession = null;
+
+        // Handle the error properly to prevent unhandled promise rejection
+        try {
+          this.handleReconnect();
+        } catch (reconnectError) {
+          logger.error(
+            `Error during reconnection handling for notebook ${this.session.fileId}:`,
+            reconnectError,
+          );
+        }
       }
     });
 
     // Connect to the WebSocket server
     this.provider.connect();
 
-    // Initialize kernel session
-    await this._initializeKernelSession();
-
     // Return the connection promise
-    return this._connectionPromise.promise;
+    return _connectionPromise.promise;
   }
 
   /**
@@ -177,8 +205,33 @@ export class NotebookSession {
     this.connected = false;
     this.synced = false;
 
+    // Store whether we had a kernel session before disconnecting
+    const hadKernelSession = this.kernelSession !== null;
+    this.kernelSession = null;
+
     // Reconnect using the same logic as in the connect method
     await this.connect();
+
+    // If we had a kernel session before, try to restore it after reconnecting
+    if (hadKernelSession && this.connected && this.synced) {
+      try {
+        this.kernelSession = await this._requestKernelSession();
+        if (this.kernelSession) {
+          logger.debug(
+            `Kernel session restored for notebook: ${this.session.fileId}`,
+          );
+        } else {
+          logger.debug(
+            `No kernel session available after reconnecting to notebook: ${this.session.fileId}`,
+          );
+        }
+      } catch (error) {
+        logger.error(
+          `Error restoring kernel session for notebook ${this.session.fileId}:`,
+          error,
+        );
+      }
+    }
   }
 
   /**
@@ -404,6 +457,9 @@ export class NotebookSession {
 
       setTimeout(() => {
         if (!this.connected) {
+          logger.debug(
+            `Attempting to reconnect to notebook ${this.session.fileId} (attempt ${this.reconnectAttempts})`,
+          );
           this.connect().catch((error: any) => {
             let errorMessage = "Unknown reconnection error";
             if (error) {
@@ -417,6 +473,9 @@ export class NotebookSession {
             }
             logger.error(
               `Reconnection failed for notebook ${this.session.fileId}: ${errorMessage}`,
+            );
+            logger.debug(
+              `Error type: ${typeof error}, Error details: ${JSON.stringify(error)}`,
             );
           });
         }
@@ -456,30 +515,20 @@ export class NotebookSession {
     this.synced = false;
     this.kernelSession = null;
     logger.error(`Disconnected from notebook: ${this.session.fileId}`, event);
+    logger.debug(`Connection closed event details: ${JSON.stringify(event)}`);
+    logger.debug(`Connection promise exists: ${!!this._connectionPromise}`);
+
+    // If there's a pending connection promise, reject it
+    if (this._connectionPromise) {
+      logger.debug(`Rejecting connection promise due to connection close`);
+      this._connectionPromise.reject(
+        new Error(`Connection closed: ${event.reason || "Unknown reason"}`),
+      );
+      this._connectionPromise = null;
+    }
+
     this.handleReconnect();
   };
-
-  /**
-   * Initialize the kernel session for this notebook
-   */
-  private async _initializeKernelSession(): Promise<void> {
-    try {
-      // Request kernel session information from JupyterLab server
-      const kernelSession = await this._requestKernelSession();
-      if (kernelSession) {
-        this.kernelSession = kernelSession;
-        logger.debug(
-          `Kernel session initialized for notebook ${this.session.fileId}: ${kernelSession.id}`,
-        );
-      }
-    } catch (error) {
-      logger.error(
-        `Failed to initialize kernel session for notebook ${this.session.fileId}:`,
-        error,
-      );
-      // Don't throw here - we can still function without a kernel session
-    }
-  }
 
   /**
    * Request kernel session information from JupyterLab server
@@ -586,7 +635,11 @@ export class NotebookSession {
    * Get the kernel session information
    * @returns Kernel session model or null if no kernel session exists
    */
-  getKernelSession(): IKernelSessionModel | null {
+  async getKernelSession(): Promise<IKernelSessionModel | null> {
+    // If kernel session is not available, try to request it
+    if (!this.kernelSession && this.connected && this.synced) {
+      this.kernelSession = await this._requestKernelSession();
+    }
     return this.kernelSession;
   }
 
@@ -596,12 +649,16 @@ export class NotebookSession {
    * @returns Promise that resolves with execution result
    */
   async executeCode(code: string): Promise<any> {
-    if (!this.kernelSession) {
-      throw new Error("No kernel session available");
-    }
-
     if (!this.connected) {
       throw new Error("Notebook session is not connected");
+    }
+
+    // Get kernel session on-demand if not available
+    if (!this.kernelSession) {
+      this.kernelSession = await this._requestKernelSession();
+      if (!this.kernelSession) {
+        throw new Error("No kernel session available");
+      }
     }
 
     try {
