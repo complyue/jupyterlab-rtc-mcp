@@ -247,6 +247,7 @@ export class JupyterLabMCPServer {
         );
       },
     );
+
     // Tool to restart notebook kernel
     this.server.tool(
       "restart_nb_kernel",

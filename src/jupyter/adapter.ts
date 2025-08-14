@@ -1,7 +1,7 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
-import { DocumentSession } from "./document-session.js";
+// import { DocumentSession } from "./document-session.js";
 import { NotebookSession } from "./notebook-session.js";
 import { cookieManager } from "./cookie-manager.js";
 import { logger } from "../utils/logger.js";
@@ -24,7 +24,7 @@ export interface ISessionModel {
  */
 export class JupyterLabAdapter {
   private baseUrl: string;
-  private documentSessions: Map<string, DocumentSession>;
+  // private documentSessions: Map<string, DocumentSession>;
   private notebookSessions: Map<string, NotebookSession>;
   private token: string | undefined;
 
@@ -33,65 +33,65 @@ export class JupyterLabAdapter {
       baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
     this.token = token || process.env.JUPYTERLAB_TOKEN;
 
-    this.documentSessions = new Map();
+    // this.documentSessions = new Map();
     this.notebookSessions = new Map();
   }
 
-  /**
-   * Create a new document session for the given path
-   * @param path Path to the document
-   * @param type Document type (default: 'notebook')
-   * @returns Promise that resolves to a DocumentSession
-   */
-  async createDocumentSession(
-    path: string,
-    type: string = "notebook",
-  ): Promise<DocumentSession> {
-    try {
-      // Request a document session from JupyterLab
-      const session = await this.requestDocSession(path, type);
+  // /**
+  //  * Create a new document session for the given path
+  //  * @param path Path to the document
+  //  * @param type Document type (default: 'notebook')
+  //  * @returns Promise that resolves to a DocumentSession
+  //  */
+  // async createDocumentSession(
+  //   path: string,
+  //   type: string = "notebook",
+  // ): Promise<DocumentSession> {
+  //   try {
+  //     // Request a document session from JupyterLab
+  //     const session = await this.requestDocSession(path, type);
 
-      // Check if we already have a session for this document
-      if (this.documentSessions.has(session.fileId)) {
-        const existingSession = this.documentSessions.get(session.fileId)!;
-        if (!existingSession.isConnected()) {
-          await existingSession.connect();
-        }
-        return existingSession;
-      }
+  //     // Check if we already have a session for this document
+  //     if (this.documentSessions.has(session.fileId)) {
+  //       const existingSession = this.documentSessions.get(session.fileId)!;
+  //       if (!existingSession.isConnected()) {
+  //         await existingSession.connect();
+  //       }
+  //       return existingSession;
+  //     }
 
-      // Create a new document session
-      const documentSession = new DocumentSession(
-        session,
-        this.baseUrl,
-        this.token,
-      );
+  //     // Create a new document session
+  //     const documentSession = new DocumentSession(
+  //       session,
+  //       this.baseUrl,
+  //       this.token,
+  //     );
 
-      // Store the original path for later use with contents API
-      (
-        documentSession as DocumentSession & { originalPath?: string }
-      ).originalPath = path;
+  //     // Store the original path for later use with contents API
+  //     (
+  //       documentSession as DocumentSession & { originalPath?: string }
+  //     ).originalPath = path;
 
-      this.documentSessions.set(session.fileId, documentSession);
+  //     this.documentSessions.set(session.fileId, documentSession);
 
-      // Connect to the document
-      await documentSession.connect();
+  //     // Connect to the document
+  //     await documentSession.connect();
 
-      return documentSession;
-    } catch (error) {
-      logger.error(`Error in createDocumentSession for path ${path}: `, error);
-      throw error;
-    }
-  }
+  //     return documentSession;
+  //   } catch (error) {
+  //     logger.error(`Error in createDocumentSession for path ${path}: `, error);
+  //     throw error;
+  //   }
+  // }
 
-  /**
-   * Get an existing document session
-   * @param fileId File ID of the document
-   * @returns DocumentSession or undefined if not found
-   */
-  getDocumentSession(fileId: string): DocumentSession | undefined {
-    return this.documentSessions.get(fileId);
-  }
+  // /**
+  //  * Get an existing document session
+  //  * @param fileId File ID of the document
+  //  * @returns DocumentSession or undefined if not found
+  //  */
+  // getDocumentSession(fileId: string): DocumentSession | undefined {
+  //   return this.documentSessions.get(fileId);
+  // }
 
   /**
    * Get an existing notebook session
@@ -102,17 +102,17 @@ export class JupyterLabAdapter {
     return this.notebookSessions.get(fileId);
   }
 
-  /**
-   * Close a document session
-   * @param fileId File ID of the document
-   */
-  async closeDocumentSession(fileId: string): Promise<void> {
-    const session = this.documentSessions.get(fileId);
-    if (session) {
-      await session.disconnect();
-      this.documentSessions.delete(fileId);
-    }
-  }
+  // /**
+  //  * Close a document session
+  //  * @param fileId File ID of the document
+  //  */
+  // async closeDocumentSession(fileId: string): Promise<void> {
+  //   const session = this.documentSessions.get(fileId);
+  //   if (session) {
+  //     await session.disconnect();
+  //     this.documentSessions.delete(fileId);
+  //   }
+  // }
 
   /**
    * Close a notebook session
@@ -126,16 +126,16 @@ export class JupyterLabAdapter {
     }
   }
 
-  /**
-   * Close all document sessions
-   */
-  async closeAllDocumentSessions(): Promise<void> {
-    const closePromises = Array.from(this.documentSessions.values()).map(
-      (session) => session.disconnect(),
-    );
-    await Promise.all(closePromises);
-    this.documentSessions.clear();
-  }
+  // /**
+  //  * Close all document sessions
+  //  */
+  // async closeAllDocumentSessions(): Promise<void> {
+  //   const closePromises = Array.from(this.documentSessions.values()).map(
+  //     (session) => session.disconnect(),
+  //   );
+  //   await Promise.all(closePromises);
+  //   this.documentSessions.clear();
+  // }
 
   /**
    * Close all notebook sessions
