@@ -6,31 +6,6 @@ This document contains detailed specifications for all tools available in the Ju
 
 ### RTC Session Management
 
-#### begin_nb_session
-Begin a real-time collaboration session for a notebook.
-
-**Parameters:**
-- `path` (required): Path to the notebook file
-
-**Returns:**
-A JSON object with session information:
-- `path`: Path to the notebook
-- `session_id`: RTC session ID
-- `file_id`: File ID for the RTC session
-- `status`: Connection status ("connected" or "disconnected")
-- `message`: Status message
-
-**Example:**
-```json
-{
-  "path": "/example/notebook1.ipynb",
-  "session_id": "session-id-123",
-  "file_id": "file-id-456",
-  "status": "connected",
-  "message": "RTC session started successfully"
-}
-```
-
 #### end_nb_session
 End a real-time collaboration session for a notebook.
 
@@ -240,6 +215,7 @@ Restart the kernel of a specified notebook, with options to clear contents and e
 - `clear_contents` (optional, default: false): Whether to clear cell contents after restart
 - `exec` (optional, default: true): Whether to execute cells after restart
 - `kernel_name` (optional): Name of the kernel to use (from list_available_kernels). If not specified, uses the current kernel or creates a new one with the default kernel.
+
 **Behavior:**
 - If an active kernel exists for the notebook, it will be restarted
 - If no active kernel exists, a new kernel will be started and then restarted
@@ -444,6 +420,16 @@ Copy a document in JupyterLab.
 **Returns:**
 Success message indicating the document was copied.
 
+#### modify_document
+Modify the content of a document in JupyterLab.
+
+**Parameters:**
+- `path` (required): Path to the document to modify
+- `content` (required): New content for the document
+
+**Returns:**
+Success message indicating the document was modified.
+
 #### document_exists
 Check if a document exists in JupyterLab.
 
@@ -454,34 +440,51 @@ Check if a document exists in JupyterLab.
 A JSON object with:
 - `exists`: Boolean indicating whether the document exists
 
+## Architecture Overview
 
-## Dependencies Supporting RTC Features
+### Session Management
+
+The JupyterLab RTC MCP Server uses an implicit session management approach:
+
+- **On-demand Session Creation**: Notebook and document sessions are created automatically when needed, without requiring explicit session initiation.
+- **Explicit Session Termination**: Sessions must be explicitly closed using the `end_nb_session` tool to free resources.
+- **Session Tracking**: The server maintains active sessions in memory and provides tools to query their status.
+
+### Real-time Collaboration Infrastructure
+
+The server leverages JupyterLab's built-in RTC infrastructure:
+
+- **WebSocket Communication**: Uses WebSocket connections for real-time synchronization.
+- **Yjs CRDTs**: Leverages Yjs for conflict-free replicated data types to ensure consistency across clients.
+
+### Tool Architecture
+
+Tools are organized into logical categories:
+
+1. **RTC Session Management**: Tools for querying and ending notebook sessions
+2. **Notebook Operations**: Tools for reading, modifying, inserting, deleting cells, and managing kernels
+3. **Document Management**: Tools for creating, listing, and managing documents in JupyterLab
+
+## Dependencies
 
 ### Core Dependencies
 
 1. **`@modelcontextprotocol/sdk`** (v0.5.0)
-   - **Purpose**: Provides the MCP server implementation and stdio transport
-   - **RTC Support**: Enables the server to communicate with AI agents via stdio transport
+   - **Purpose**: Provides the MCP server implementation
+   - **RTC Support**: Enables the server to communicate with AI agents
 
 2. **`@jupyterlab/services`** (v7.0.0)
    - **Purpose**: Provides client-side APIs for interacting with JupyterLab services
-   - **RTC Support**: While not specifically designed for RTC, it provides essential APIs that enable RTC functionality:
+   - **RTC Support**: Provides essential APIs for RTC functionality:
      - `ServerConnection.makeSettings()`: Creates connection settings for JupyterLab API
      - `ServerConnection.makeRequest()`: Makes HTTP requests to JupyterLab endpoints
      - `User.IManager`: Manages user identity and authentication
-   - **Key RTC Usage**: These APIs are used to:
-     - Request document sessions from the RTC collaboration endpoint (`api/collaboration/session`)
-     - Connect to WebSocket rooms for real-time collaboration
-     - Handle user authentication and identity management
 
 3. **`@jupyterlab/coreutils`** (v6.0.0)
    - **Purpose**: Provides utility functions for JupyterLab
-   - **RTC Support**: While not specifically designed for RTC, it provides essential utilities:
+   - **RTC Support**: Provides essential utilities:
      - `URLExt.join()`: Constructs URLs to JupyterLab API endpoints
      - `URLExt.parse()`: Parses URLs for WebSocket connections
-   - **Key RTC Usage**: These utilities are used to:
-     - Build URLs to RTC collaboration endpoints
-     - Construct WebSocket URLs for real-time synchronization
 
 ### Real-time Collaboration Dependencies
 
@@ -493,141 +496,17 @@ A JSON object with:
    - **Purpose**: WebSocket provider for Yjs
    - **RTC Support**: Enables real-time synchronization over WebSocket connections
 
-### Additional JupyterLab API Packages for Enhanced RTC Functionality
+6. **`@jupyter/ydoc`**
+   - **Purpose**: Provides Yjs-based document models for JupyterLab
+   - **RTC Support**: Enables notebook-specific synchronization using YNotebook
 
-6. **`@jupyterlab/docmanager`** (v4.5.0)
-   - **Purpose**: Provides document management capabilities for JupyterLab
-   - **RTC Support**: Enhances RTC functionality by providing:
-     - Document context management for collaborative sessions
-     - Document lifecycle management (open, close, save)
-     - Integration with document registry for model creation
-   - **Key RTC Usage**:
-     - Managing document contexts during RTC sessions
-     - Handling document synchronization states
-     - Providing document models for collaborative editing
+### Additional Dependencies
 
-7. **`@jupyterlab/docregistry`** (v4.5.0)
-   - **Purpose**: Provides document registry functionality for JupyterLab
-   - **RTC Support**: Supports RTC by:
-     - Registering document models and factories
-     - Managing document contexts for collaborative editing
-     - Providing interfaces for document creation and management
-   - **Key RTC Usage**:
-     - Creating and managing document models for RTC sessions
-     - Handling document type registration for collaborative documents
-     - Providing context for document operations in real-time
+7. **`zod`**
+   - **Purpose**: Schema validation for tool parameters
+   - **RTC Support**: Ensures proper parameter validation for RTC operations
 
-8. **`@jupyterlab/nbformat`** (v4.5.0)
-   - **Purpose**: Provides notebook format interfaces and utilities
-   - **RTC Support**: Supports RTC by:
-     - Defining notebook data structures for synchronization
-     - Providing validation for notebook content
-     - Enabling serialization/deserialization for collaborative editing
-   - **Key RTC Usage**:
-     - Structuring notebook data for real-time synchronization
-     - Validating notebook content during collaborative editing
-     - Handling notebook format conversions
-
-9. **`@jupyterlab/notebook`** (v4.5.0)
-   - **Purpose**: Provides notebook model implementations (headless)
-   - **RTC Support**: Enhances RTC by:
-     - Managing notebook models and their synchronization
-     - Handling cell execution in collaborative environments
-     - Providing notebook-level data structures
-   - **Key RTC Usage**:
-     - Managing notebook data structures for real-time collaboration
-     - Handling cell operations in collaborative notebooks
-     - Managing notebook-level synchronization state
-
-10. **`@jupyterlab/cells`** (v4.5.0)
-    - **Purpose**: Provides cell model implementations (headless)
-    - **RTC Support**: Supports RTC by:
-      - Managing cell models and their synchronization
-      - Handling cell-specific operations in real-time
-      - Providing cell-level data structures
-    - **Key RTC Usage**:
-      - Managing cell content synchronization
-      - Handling cell execution and output in collaborative environments
-      - Providing cell data structures for real-time updates
-
-11. **`@jupyterlab/rendermime`** (v4.5.0)
-    - **Purpose**: Provides MIME rendering capabilities for JupyterLab
-    - **RTC Support**: Enhances RTC by:
-      - Handling rich output synchronization
-      - Providing consistent output formats across clients
-      - Managing output data structures
-    - **Key RTC Usage**:
-      - Synchronizing rich content display
-      - Handling MIME type rendering for collaborative outputs
-      - Managing output data structures for real-time updates
-
-12. **`@jupyterlab/outputarea`** (v4.5.0)
-    - **Purpose**: Provides output area model implementations (headless)
-    - **RTC Support**: Supports RTC by:
-      - Managing output areas for collaborative cells
-      - Synchronizing output content across clients
-      - Handling output updates in real-time
-    - **Key RTC Usage**:
-      - Synchronizing output updates across clients
-      - Managing output area state during collaboration
-      - Handling output data structures for real-time updates
-
-13. **`@jupyterlab/filebrowser`** (v4.5.0)
-    - **Purpose**: Provides file system access capabilities for JupyterLab
-    - **RTC Support**: Enhances RTC by:
-      - Managing file operations in collaborative environments
-      - Providing file system access for document creation
-      - Handling file synchronization state
-    - **Key RTC Usage**:
-      - Creating and managing documents for RTC sessions
-      - Providing file system navigation for collaborative work
-      - Handling file operations during real-time collaboration
-
-14. **`@jupyterlab/observables`** (v5.5.0)
-    - **Purpose**: Provides observable data structures for JupyterLab
-    - **RTC Support**: Supports RTC by:
-      - Providing observable models for real-time updates
-      - Enabling reactive programming patterns
-      - Managing state synchronization
-    - **Key RTC Usage**:
-      - Creating observable models for collaborative documents
-      - Handling real-time state updates
-      - Managing reactive data structures for synchronization
-
-15. **`@jupyterlab/statedb`** (v4.5.0)
-    - **Purpose**: Provides state management capabilities for JupyterLab
-    - **RTC Support**: Enhances RTC by:
-      - Managing application state during collaboration
-      - Providing state persistence for sessions
-      - Handling state synchronization across clients
-    - **Key RTC Usage**:
-      - Managing session state for RTC connections
-      - Providing state restoration for collaborative sessions
-      - Handling state consistency across clients
-
-16. **`@jupyterlab/running`** (v4.5.0)
-    - **Purpose**: Provides running sessions management for JupyterLab
-    - **RTC Support**: Supports RTC by:
-      - Managing kernel sessions for collaborative notebooks
-      - Providing session status information
-      - Handling session lifecycle events
-    - **Key RTC Usage**:
-      - Managing kernel sessions during RTC
-      - Providing session status for collaborative notebooks
-      - Handling kernel operations in real-time
-
-17. **`@jupyterlab/terminal`** (v4.5.0)
-    - **Purpose**: Provides terminal emulation and management for JupyterLab
-    - **RTC Support**: Enhances RTC by:
-      - Enabling terminal session management
-      - Providing terminal access for remote operations
-      - Handling terminal state synchronization
-    - **Key RTC Usage**:
-      - Managing terminal sessions
-      - Handling terminal state during collaboration
-      - Managing terminal operations in real-time
-
-### How These Dependencies Work Together for RTC
+## How These Dependencies Work Together for RTC
 
 1. **MCP Protocol Layer**:
    - `@modelcontextprotocol/sdk` handles the MCP protocol communication with AI agents
@@ -640,58 +519,17 @@ A JSON object with:
    - `@jupyterlab/coreutils` provides utilities for:
      - Building URLs to RTC endpoints
      - Constructing WebSocket URLs
-   - `@jupyterlab/docmanager` provides document management for:
-     - Managing document contexts during RTC sessions
-     - Handling document lifecycle operations
-   - `@jupyterlab/docregistry` provides document registry functionality for:
-     - Creating and managing document models
-     - Handling document type registration
 
-3. **Document and Content Management Layer**:
-   - `@jupyterlab/nbformat` provides notebook format interfaces for:
-     - Structuring notebook data for synchronization
-     - Validating notebook content during collaboration
-   - `@jupyterlab/notebook` provides notebook models for:
-     - Managing notebook data structures for real-time collaboration
-     - Handling notebook-level synchronization
-   - `@jupyterlab/cells` provides cell models for:
-     - Managing cell content synchronization
-     - Handling cell execution and output in collaborative environments
-   - `@jupyterlab/rendermime` provides output handling for:
-     - Synchronizing rich content display
-     - Managing output data structures for real-time updates
-   - `@jupyterlab/outputarea` provides output area models for:
-     - Synchronizing output updates across clients
-     - Managing output area state during collaboration
-
-4. **File and Resource Management Layer**:
-   - `@jupyterlab/filebrowser` provides file system access for:
-     - Creating and managing documents for RTC sessions
-     - Providing file system navigation for collaborative work
-   - `@jupyterlab/running` provides session management for:
-     - Managing kernel sessions during RTC
-     - Providing session status for collaborative notebooks
-   - `@jupyterlab/terminal` provides terminal management for:
-     - Managing terminal sessions
-     - Handling terminal state during collaboration
-
-5. **State and Data Management Layer**:
-   - `@jupyterlab/observables` provides observable data structures for:
-     - Creating observable models for collaborative documents
-     - Handling real-time state updates
-   - `@jupyterlab/statedb` provides state management for:
-     - Managing session state for RTC connections
-     - Providing state restoration for collaborative sessions
-
-6. **Real-time Synchronization Layer**:
+3. **Real-time Synchronization Layer**:
    - `yjs` provides the CRDT data structures for shared documents
    - `y-websocket` manages the WebSocket connection to JupyterLab's RTC server
+   - `@jupyter/ydoc` provides notebook-specific document models
 
 ### Evidence of RTC Support in @jupyterlab/services and @jupyterlab/coreutils
 
 From the JupyterLab RTC codebase, we can see how these libraries are used:
 
-1. **Document Session Request** (from `packages/docprovider/src/requests.ts`):
+1. **Document Session Request**:
    ```typescript
    export async function requestDocSession(
      format: string,
@@ -708,7 +546,7 @@ From the JupyterLab RTC codebase, we can see how these libraries are used:
    }
    ```
 
-2. **WebSocket Provider Connection** (from `packages/docprovider/src/yprovider.ts`):
+2. **WebSocket Provider Connection**:
    ```typescript
    private async _connect(): Promise<void> {
      const session = await requestDocSession(
@@ -731,7 +569,7 @@ From the JupyterLab RTC codebase, we can see how these libraries are used:
    }
    ```
 
-3. **Global Awareness** (from `packages/collaboration-extension/src/collaboration.ts`):
+3. **Global Awareness**:
    ```typescript
    const server = ServerConnection.makeSettings(); // From @jupyterlab/services
    const url = URLExt.join(server.wsUrl, 'api/collaboration/room'); // From @jupyterlab/coreutils

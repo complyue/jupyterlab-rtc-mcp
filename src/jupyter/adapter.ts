@@ -13,10 +13,13 @@ export interface ISessionModel {
 }
 
 /**
- * JupyterLabAdapter handles communication with JupyterLab's RTC infrastructure
+ * JupyterLabAdapter handles communication with a JupyterLab instance with its RTC infrastructure
  *
- * This adapter manages document sessions, WebSocket connections, and provides
- * an interface for AI agents to interact with Jupyter notebooks.
+ * This adapter manages WebSocket connections for notebook and document sessions, provides
+ * an interface for AI agents to interact with Jupyter notebooks and documents.
+ *
+ * By design, notebook/document sessions are created implicititly on-demand, and must be closed
+ * explicitly by AI agents by using tools.
  */
 export class JupyterLabAdapter {
   private baseUrl: string;
@@ -142,35 +145,6 @@ export class JupyterLabAdapter {
     );
     await Promise.all(closePromises);
     this.notebookSessions.clear();
-  }
-
-  /**
-   * Begin an RTC session for a notebook
-   * @param params Parameters for beginning a session
-   * @returns MCP response with session information
-   */
-  async beginNotebookSession(params: { path: string }): Promise<any> {
-    const session = await this.createNotebookSession(params.path);
-    const sessionInfo = this.getNotebookSessionInfo(session);
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              path: params.path,
-              session_id: sessionInfo.sessionId,
-              file_id: sessionInfo.fileId,
-              status: "connected",
-              message: "RTC session started successfully",
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-    };
   }
 
   /**

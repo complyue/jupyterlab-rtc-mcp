@@ -13,28 +13,32 @@ jupyterlab-rtc-mcp/
 │   ├── server/
 │   │   ├── mcp-server.ts        # MCP server implementation with tool registration
 │   │   └── transport/
+│   │       ├── http-transport.ts # HTTP transport handler
 │   │       └── stdio-transport.ts # Stdio transport handler
 │   ├── jupyter/
 │   │   ├── adapter.ts           # JupyterLab adapter for RTC communication
 │   │   ├── cookie-manager.ts    # Cookie management for authentication
 │   │   ├── document-session.ts  # Document session management
-│   │   └── websocket-client.ts  # WebSocket client for JupyterLab
-│   └── tools/
-│       ├── notebook-tools.ts    # Notebook operation tools
-│       └── document-tools.ts    # Document management tools
+│   │   └── notebook-session.ts  # Notebook session management
+│   ├── tools/
+│   │   ├── notebook-tools.ts    # Notebook operation tools
+│   │   └── document-tools.ts    # Document management tools
+│   └── utils/
+│       └── logger.ts           # Logging utility
 ├── package.json                 # Project dependencies and scripts
 ├── tsconfig.json               # TypeScript configuration
 ├── README.md                   # Project documentation
 ├── DESIGN.md                   # Detailed tool specifications
 └── AGENTS.md                   # This file - AI agent guidelines
 ```
+
 ### Key Components
 
 1. **MCP Server Layer** (`src/server/mcp-server.ts`): Implements the MCP protocol, registers tools, and handles requests from AI agents.
 
-2. **JupyterLab Adapter** (`src/jupyter/adapter.ts`): Manages communication with JupyterLab's RTC infrastructure, handles document sessions, and provides an interface for AI agents.
+2. **JupyterLab Adapter** (`src/jupyter/adapter.ts`): Manages communication with JupyterLab's RTC infrastructure, handles implicit session creation, and provides an interface for AI agents.
 
-3. **Transport Layer** (`src/server/transport/`): Supports stdio transport for communication with AI agents.
+3. **Transport Layer** (`src/server/transport/`): Supports both HTTP and stdio transports for communication with AI agents.
 
 4. **Tools Implementation** (`src/tools/`): Provides high-level operations for notebook and document management.
 
@@ -45,6 +49,7 @@ jupyterlab-rtc-mcp/
 - `npm run build` - Compile TypeScript source code to JavaScript in the `dist/` directory
 - `npm run lint` - Run ESLint to check code quality and style
 - `npm run format` - Format code using Prettier
+
 ### Development Environment Setup
 
 1. Install dependencies: `npm install`
@@ -90,13 +95,13 @@ jupyterlab-rtc-mcp/
 
 ### MCP Protocol Implementation
 
-The server implements the Model Context Protocol (MCP) to communicate with AI agents. It supports stdio transport for communication, recommended for production use.
+The server implements the Model Context Protocol (MCP) to communicate with AI agents. It supports both HTTP and stdio transports for communication.
 
 ### JupyterLab Integration
 
 The server integrates with JupyterLab's RTC infrastructure through several key components:
 
-1. **Document Sessions**: Manages real-time collaboration sessions for notebooks and documents
+1. **Implicit Session Management**: Sessions are created on-demand when needed, without explicit initiation
 2. **WebSocket Communication**: Handles real-time synchronization with JupyterLab
 3. **Authentication**: Supports token-based authentication and cookie management
 
@@ -104,7 +109,7 @@ The server integrates with JupyterLab's RTC infrastructure through several key c
 
 The server provides tools organized into three categories:
 
-1. **RTC Session Management**: Tools for beginning, ending, and querying notebook sessions
+1. **RTC Session Management**: Tools for ending and querying notebook sessions (sessions are created implicitly)
 2. **Notebook Operations**: Tools for reading, modifying, inserting, deleting cells, and managing kernels
 3. **Document Management**: Tools for creating, listing, and managing documents in JupyterLab
 
@@ -158,6 +163,7 @@ To use the MCP server with an AI agent, configure the agent to use the server as
 - `@modelcontextprotocol/sdk`: Provides the MCP server implementation
 - `@jupyterlab/services`: Client-side APIs for interacting with JupyterLab
 - `@jupyterlab/coreutils`: Utility functions for JupyterLab
+- `@jupyter/ydoc`: Yjs-based document models for JupyterLab
 - `yjs`: CRDT library for real-time collaboration
 - `y-websocket`: WebSocket provider for Yjs
 - `zod`: Schema validation

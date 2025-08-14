@@ -45,9 +45,6 @@ export class JupyterLabMCPServer {
    * Register all tools using the idiomatic server.tool() method
    */
   private registerTools(): void {
-    // RTC Session Management Tools
-    this.registerRTCSessionTools();
-
     // Notebook Operation Tools
     this.registerNotebookTools();
 
@@ -56,33 +53,9 @@ export class JupyterLabMCPServer {
   }
 
   /**
-   * Register RTC session management tools
+   * Register notebook operation tools
    */
-  private registerRTCSessionTools(): void {
-    // Tool to begin a notebook session
-    this.server.tool(
-      "begin_nb_session",
-      "Begin a real-time collaboration session for a notebook",
-      { path: z.string().describe("Path to the notebook file") },
-      async (args) => {
-        return await this.jupyterAdapter.beginNotebookSession(
-          args as { path: string },
-        );
-      },
-    );
-
-    // Tool to end a notebook session
-    this.server.tool(
-      "end_nb_session",
-      "End a real-time collaboration session for a notebook",
-      { path: z.string().describe("Path to the notebook file") },
-      async (args) => {
-        return await this.jupyterAdapter.endNotebookSession(
-          args as { path: string },
-        );
-      },
-    );
-
+  private registerNotebookTools(): void {
     // Tool to query notebook sessions
     this.server.tool(
       "query_nb_sessions",
@@ -101,12 +74,19 @@ export class JupyterLabMCPServer {
         );
       },
     );
-  }
 
-  /**
-   * Register notebook operation tools
-   */
-  private registerNotebookTools(): void {
+    // Tool to end a notebook session
+    this.server.tool(
+      "end_nb_session",
+      "End a real-time collaboration session for a notebook",
+      { path: z.string().describe("Path to the notebook file") },
+      async (args) => {
+        return await this.jupyterAdapter.endNotebookSession(
+          args as { path: string },
+        );
+      },
+    );
+
     // Tool to list notebooks
     this.server.tool(
       "list_nbs",
