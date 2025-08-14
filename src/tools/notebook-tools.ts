@@ -1,40 +1,21 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
+import { ICodeCell } from "@jupyterlab/nbformat";
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
 import { NotebookSession } from "../jupyter/notebook-session.js";
 import { ISessionModel } from "../jupyter/notebook-session.js";
 import { logger } from "../utils/logger.js";
 
-// Type definitions for JupyterLab API responses
-// Type definitions for JupyterLab API responses
-interface JupyterContent {
-  name: string;
-  path: string;
-  type: "notebook" | "directory" | "file";
-  created?: string;
-  last_modified?: string;
-  size?: number;
-  writable?: boolean;
-  content?: JupyterContent[];
-  message?: string;
-}
+import {
+  JupyterContent,
+  KernelSpec,
+  NotebookInfo,
+  CellRange,
+  CellModification,
+  CellInsertion,
+  KernelInfo,
+} from "../jupyter/types.js";
 
-interface JupyterCell {
-  id?: string;
-  cell_type: "code" | "markdown" | "raw";
-  source: string;
-  metadata: Record<string, unknown>;
-}
-
-interface NotebookInfo {
-  path: string;
-  name: string;
-  last_modified?: string;
-  created?: string;
-  size?: number;
-  writable?: boolean;
-}
-
-interface NotebookStatusResult {
+export interface NotebookStatusResult {
   path: string;
   cell_count: number;
   last_modified: string;
@@ -45,52 +26,20 @@ interface NotebookStatusResult {
   };
 }
 
-interface CellInfo {
-  index: number;
-  id: string;
-  content: string;
-  type: string;
-}
-
-interface CellRange {
-  start: number;
-  end?: number;
-}
-
-interface CellModification {
-  range: CellRange;
-  content: string;
-}
-
-interface CellInsertion {
-  type?: string;
-  content: string;
-}
-
-interface KernelSpec {
-  display_name: string;
-  language: string;
-  resource_dir: string;
-}
-
-interface KernelInfo {
-  name: string;
-  display_name: string;
-  language: string;
-  path: string;
-}
-
-interface KernelSpecsResponse {
+export interface KernelSpecsResponse {
   kernelspecs: Record<string, KernelSpec>;
   message?: string;
 }
 
-// Type for parsed JSON response
-interface JsonResponseBase {
+export interface JsonResponseBase {
   message?: string;
 }
 
-type JsonResponse = JupyterContent | KernelSpecsResponse | JsonResponseBase;
+export type JsonResponse =
+  | JupyterContent
+  | KernelSpecsResponse
+  | JsonResponseBase;
+
 /**
  * NotebookTools provides high-level operations for Jupyter notebooks
  *
@@ -384,8 +333,7 @@ export class NotebookTools {
       ];
 
       // Extract cells based on ranges
-      const cells: CellInfo[] = [];
-
+      const cells = [];
       for (const range of ranges) {
         const start = Math.max(0, range.start);
         const end = Math.min(
@@ -395,12 +343,7 @@ export class NotebookTools {
 
         for (let i = start; i < end; i++) {
           const cell = notebookContent.cells[i];
-          cells.push({
-            index: i,
-            id: cell.id,
-            content: cell.content,
-            type: cell.type,
-          });
+          cells.push({ index: i, cell });
         }
       }
 
@@ -456,8 +399,9 @@ export class NotebookTools {
         // Update each cell in the range
         for (let i = start; i < end; i++) {
           const cell = notebookContent.cells[i];
-          notebookSession.updateCellContent(cell.id, modification.content);
-          cellIdsToExecute.push(cell.id);
+          const cellId = cell.id! as string;
+          notebookSession.updateCellContent(cellId, modification.content);
+          cellIdsToExecute.push(cellId);
         }
       }
 
@@ -590,7 +534,7 @@ export class NotebookTools {
         // Delete cells in this range (in reverse order to avoid index shifting)
         for (let i = end - 1; i >= start; i--) {
           const cell = notebookContent.cells[i];
-          notebookSession.deleteCell(cell.id);
+          notebookSession.deleteCell(cell.id! as string);
           deletedCellsCount++;
         }
       }
@@ -647,7 +591,7 @@ export class NotebookTools {
 
         for (const cell of notebookContent.cells) {
           if (cell.type === "code") {
-            notebookSession.updateCellContent(cell.id, "");
+            notebookSession.updateCellContent(cell.id! as string, "");
           }
         }
       }
@@ -656,8 +600,8 @@ export class NotebookTools {
       if (params.exec !== false) {
         const notebookContent = notebookSession.getNotebookContent();
         const cellIds = notebookContent.cells
-          .filter((cell: JupyterCell) => cell.cell_type === "code")
-          .map((cell: JupyterCell) => cell.id);
+          .filter((cell) => cell.cell_type === "code")
+          .map((cell) => cell.id! as string);
 
         if (cellIds.length > 0) {
           await this.executeCells(notebookSession, cellIds);
@@ -711,12 +655,10 @@ export class NotebookTools {
 
       // Execute each cell
       for (const cellId of cellIds) {
-        const cell = notebookContent.cells.find(
-          (c: JupyterCell) => c.id === cellId,
-        );
+        const cell = notebookContent.cells.find((c) => c.id === cellId);
         if (cell && cell.type === "code") {
           try {
-            await session.executeCode(cell.content);
+            await session.executeCode((cell as ICodeCell).source);
           } catch (error) {
             logger.error(`Failed to execute cell ${cellId}:`, error);
             // Continue with other cells even if one fails
@@ -817,33 +759,6 @@ export class NotebookTools {
       )._initializeKernelSession();
     } catch (error) {
       logger.error("Failed to restart kernel:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get the content of a cell
-   * @param session Document session
-   * @param cellId ID of the cell
-   * @returns Cell content
-   */
-  private getCellContent(session: NotebookSession, cellId: string): string {
-    try {
-      // Get notebook content
-      const notebookContent = session.getNotebookContent();
-
-      // Find the cell by ID
-      const cell = notebookContent.cells.find(
-        (c: JupyterCell) => c.id === cellId,
-      );
-
-      if (!cell) {
-        throw new Error(`Cell with ID ${cellId} not found`);
-      }
-
-      return cell.content;
-    } catch (error) {
-      logger.error(`Failed to get content for cell ${cellId}:`, error);
       throw error;
     }
   }

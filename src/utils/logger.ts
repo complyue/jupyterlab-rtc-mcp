@@ -48,7 +48,7 @@ export class Logger {
    * @param message The message to log
    * @param error Optional error object
    */
-  error(message: string, error?: any): void {
+  error(message: string, error?: unknown): void {
     if (currentLogLevel >= 0) {
       const timestamp = new Date().toISOString();
       const contextPrefix = this.context ? `[${this.context}] ` : "";

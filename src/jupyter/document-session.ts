@@ -19,7 +19,7 @@ export interface ISessionModel {
  * and change tracking for a single document.
  */
 export class DocumentSession {
-  private session: ISessionModel;
+  private _session: ISessionModel;
   private baseUrl: string;
   private token: string | undefined;
   private cookieManager: typeof cookieManager;
@@ -32,7 +32,7 @@ export class DocumentSession {
   private _connectionPromise: PromiseDelegate<void> | null;
 
   constructor(session: ISessionModel, baseUrl: string, token?: string) {
-    this.session = session;
+    this._session = session;
     this.baseUrl = baseUrl;
     this.token = token;
     this.cookieManager = cookieManager;
@@ -43,6 +43,10 @@ export class DocumentSession {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this._connectionPromise = null;
+  }
+
+  get session() {
+    return this._session;
   }
 
   /**
@@ -65,11 +69,11 @@ export class DocumentSession {
     const wsUrl = URLExt.join(
       this.baseUrl.replace(/^http/, "ws"),
       "api/collaboration/room",
-      `${this.session.format}:${this.session.type}:${this.session.fileId}`,
+      `${this._session.format}:${this._session.type}:${this._session.fileId}`,
     );
 
     const wsUrlWithParams = new URL(wsUrl);
-    wsUrlWithParams.searchParams.append("sessionId", this.session.sessionId);
+    wsUrlWithParams.searchParams.append("sessionId", this._session.sessionId);
 
     // Add cookies if available
     if (this.cookieManager.hasCookies()) {
@@ -85,7 +89,7 @@ export class DocumentSession {
     // Create WebSocket provider
     this.provider = new WebsocketProvider(
       wsUrlWithParams.toString(),
-      `${this.session.format}:${this.session.type}:${this.session.fileId}`,
+      `${this._session.format}:${this._session.type}:${this._session.fileId}`,
       this.document,
       {
         connect: false,
@@ -106,19 +110,34 @@ export class DocumentSession {
 
     this.provider.on("connection-close", this._onConnectionClosed);
 
-    this.provider.on("connection-error", (error: any) => {
+    this.provider.on("connection-error", (error: unknown) => {
       logger.error(
-        `WebSocket error for document ${this.session.fileId}`,
+        `WebSocket error for document ${this._session.fileId}`,
         error,
       );
 
       // Extract more detailed error information
       let errorMessage = "Unknown WebSocket error";
       if (error) {
-        if (error.message) {
+        if (error instanceof Error) {
           errorMessage = error.message;
-        } else if (error.type === "error" && error.error) {
-          errorMessage = error.error.message || JSON.stringify(error.error);
+        } else if (
+          typeof error === "object" &&
+          error !== null &&
+          "message" in error
+        ) {
+          errorMessage = String(error.message);
+        } else if (
+          typeof error === "object" &&
+          error !== null &&
+          "type" in error &&
+          "error" in error &&
+          (error as { type: string }).type === "error" &&
+          (error as { error: Error }).error instanceof Error
+        ) {
+          const errorObj = error as { error: Error };
+          errorMessage =
+            errorObj.error.message || JSON.stringify(errorObj.error);
         } else if (typeof error === "string") {
           errorMessage = error;
         } else {
@@ -127,7 +146,7 @@ export class DocumentSession {
       }
 
       logger.error(
-        `Detailed WebSocket error for document ${this.session.fileId}: ${errorMessage}`,
+        `Detailed WebSocket error for document ${this._session.fileId}: ${errorMessage}`,
       );
 
       if (!this.connected && this._connectionPromise) {
@@ -153,14 +172,14 @@ export class DocumentSession {
     }
     this.connected = false;
     this.synced = false;
-    logger.debug(`Disconnected from document: ${this.session.fileId}`);
+    logger.debug(`Disconnected from document: ${this._session.fileId}`);
   }
 
   /**
    * Reconnect to the JupyterLab WebSocket server
    */
   async reconnect(): Promise<void> {
-    logger.debug(`Reconnecting to document: ${this.session.fileId}`);
+    logger.debug(`Reconnecting to document: ${this._session.fileId}`);
 
     // Disconnect first if already connected
     if (this.provider) {
@@ -204,7 +223,7 @@ export class DocumentSession {
    */
   async ensureSynchronized(): Promise<void> {
     logger.debug(
-      `ensureSynchronized() called for document: ${this.session.fileId}`,
+      `ensureSynchronized() called for document: ${this._session.fileId}`,
     );
 
     // If already synchronized, return immediately
@@ -257,7 +276,10 @@ export class DocumentSession {
   /**
    * Get the document content from the Yjs document
    */
-  getDocumentContent(): any {
+  getDocumentContent(): {
+    content: Record<string, unknown>;
+    metadata: Record<string, unknown>;
+  } {
     // Check if we're connected to the WebSocket server
     if (!this.connected) {
       throw new Error(
@@ -289,7 +311,7 @@ export class DocumentSession {
    * @param key Key of the content to update
    * @param value New value for the content
    */
-  updateContent(key: string, value: any): void {
+  updateContent(key: string, value: unknown): void {
     // Update the content using Yjs transaction
     this.document.transact(() => {
       const content = this.document.getMap("content");
@@ -302,7 +324,7 @@ export class DocumentSession {
    * @param key Key of the metadata to update
    * @param value New value for the metadata
    */
-  updateMetadata(key: string, value: any): void {
+  updateMetadata(key: string, value: unknown): void {
     // Update the metadata using Yjs transaction
     this.document.transact(() => {
       const metadata = this.document.getMap("metadata");
@@ -315,7 +337,7 @@ export class DocumentSession {
    * @param key Key of the content to retrieve
    * @returns The content value
    */
-  getContent(key: string): any {
+  getContent(key: string): unknown {
     const content = this.document.getMap("content");
     return content.get(key);
   }
@@ -325,7 +347,7 @@ export class DocumentSession {
    * @param key Key of the metadata to retrieve
    * @returns The metadata value
    */
-  getMetadata(key: string): any {
+  getMetadata(key: string): unknown {
     const metadata = this.document.getMap("metadata");
     return metadata.get(key);
   }
@@ -340,10 +362,10 @@ export class DocumentSession {
 
       setTimeout(() => {
         if (!this.connected) {
-          this.connect().catch((error: any) => {
+          this.connect().catch((error: unknown) => {
             let errorMessage = "Unknown reconnection error";
             if (error) {
-              if (error.message) {
+              if (error instanceof Error) {
                 errorMessage = error.message;
               } else if (typeof error === "string") {
                 errorMessage = error;
@@ -352,14 +374,14 @@ export class DocumentSession {
               }
             }
             logger.error(
-              `Reconnection failed for document ${this.session.fileId}: ${errorMessage}`,
+              `Reconnection failed for document ${this._session.fileId}: ${errorMessage}`,
             );
           });
         }
       }, delay);
     } else {
       logger.error(
-        `Max reconnection attempts reached for document ${this.session.fileId}`,
+        `Max reconnection attempts reached for document ${this._session.fileId}`,
       );
     }
   }
@@ -387,10 +409,10 @@ export class DocumentSession {
    * Handle connection close event from the WebSocket provider
    * @param event Connection close event
    */
-  private _onConnectionClosed = (event: any) => {
+  private _onConnectionClosed = (event: unknown) => {
     this.connected = false;
     this.synced = false;
-    logger.error(`Disconnected from document: ${this.session.fileId}`, event);
+    logger.error(`Disconnected from document: ${this._session.fileId}`, event);
     this.handleReconnect();
   };
 }

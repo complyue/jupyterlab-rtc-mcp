@@ -4,6 +4,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import cors from 'cors';
 import { logger } from '../../utils/logger.js';
+import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { Server } from 'node:http';
 
 /**
  * HTTP transport handler for JupyterLab RTC MCP Server
@@ -13,10 +15,10 @@ import { logger } from '../../utils/logger.js';
  */
 export class JupyterLabHTTPTransport {
   private app: express.Application;
-  private server: any;
+  private server?: Server;
   private transports: { [sessionId: string]: StreamableHTTPServerTransport };
   private port: number;
-  private mcpServer: any;
+  private mcpServer?: { connect: (transport: Transport) => Promise<void> };
 
   /**
    * Create a new HTTP transport
@@ -68,7 +70,7 @@ export class JupyterLabHTTPTransport {
           });
 
           // Connect the transport to the MCP server BEFORE handling the request
-          await this.mcpServer.connect(transport);
+          await this.mcpServer!.connect(transport);
           await transport.handleRequest(req, res, req.body);
           return; // Already handled
         } else {
@@ -113,7 +115,7 @@ export class JupyterLabHTTPTransport {
    * Set the MCP server to use with this transport
    * @param server The MCP server instance
    */
-  setMCPServer(server: any): void {
+  setMCPServer(server: { connect: (transport: Transport) => Promise<void> }): void {
     this.mcpServer = server;
   }
 

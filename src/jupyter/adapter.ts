@@ -1,3 +1,4 @@
+import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
 import { DocumentSession } from "./document-session.js";
@@ -69,7 +70,9 @@ export class JupyterLabAdapter {
       );
 
       // Store the original path for later use with contents API
-      (documentSession as any).originalPath = path;
+      (
+        documentSession as DocumentSession & { originalPath?: string }
+      ).originalPath = path;
 
       this.documentSessions.set(session.fileId, documentSession);
 
@@ -174,7 +177,9 @@ export class JupyterLabAdapter {
       );
 
       // Store the original path for later use with contents API
-      (notebookSession as any).originalPath = path;
+      (
+        notebookSession as NotebookSession & { originalPath?: string }
+      ).originalPath = path;
 
       this.notebookSessions.set(session.fileId, notebookSession);
 
@@ -193,12 +198,12 @@ export class JupyterLabAdapter {
    * @param params Parameters for ending a session
    * @returns MCP response indicating success
    */
-  async endNotebookSession(params: { path: string }): Promise<any> {
+  async endNotebookSession(params: { path: string }): Promise<CallToolResult> {
     // Find the session for this notebook
     let sessionToClose = null;
     let sessionFileId = null;
     for (const [fileId, session] of this.notebookSessions) {
-      const sessionInfo = this.getNotebookSessionInfo(session);
+      const sessionInfo = session.session;
       if (
         sessionInfo.fileId === params.path ||
         sessionInfo.fileId.endsWith(params.path)
@@ -254,11 +259,13 @@ export class JupyterLabAdapter {
    * @param params Parameters for querying session status
    * @returns MCP response with session status
    */
-  async queryNotebookSession(params: { path: string }): Promise<any> {
+  async queryNotebookSession(params: {
+    path: string;
+  }): Promise<CallToolResult> {
     // Find the session for this notebook
     let foundSession = null;
     for (const [, session] of this.notebookSessions) {
-      const sessionInfo = this.getNotebookSessionInfo(session);
+      const sessionInfo = session.session;
       if (
         sessionInfo.fileId === params.path ||
         sessionInfo.fileId.endsWith(params.path)
@@ -269,7 +276,7 @@ export class JupyterLabAdapter {
     }
 
     if (foundSession) {
-      const sessionInfo = this.getNotebookSessionInfo(foundSession);
+      const sessionInfo = foundSession.session;
       const notebookContent = foundSession.getNotebookContent();
 
       return {
@@ -319,7 +326,9 @@ export class JupyterLabAdapter {
    * @param params Parameters for querying session status
    * @returns MCP response with session status information
    */
-  async queryNotebookSessions(params: { root_path?: string }): Promise<any> {
+  async queryNotebookSessions(params: {
+    root_path?: string;
+  }): Promise<CallToolResult> {
     const { ServerConnection } = await import("@jupyterlab/services");
     const { URLExt } = await import("@jupyterlab/coreutils");
 
@@ -353,11 +362,12 @@ export class JupyterLabAdapter {
     // Store cookies from response
     this.cookieManager.parseResponseHeaders(response.headers);
 
-    let data: any = await response.text();
+    let dataText: string = await response.text();
+    let data = null;
 
-    if (data.length > 0) {
+    if (dataText.length > 0) {
       try {
-        data = JSON.parse(data);
+        data = JSON.parse(dataText);
       } catch {
         logger.error("Not a JSON response body.", response);
       }
@@ -365,7 +375,7 @@ export class JupyterLabAdapter {
 
     if (!response.ok) {
       throw new Error(
-        `Server returned ${response.status}: ${data.message || data}`,
+        `Server returned ${response.status}: ${data && typeof data === "object" && "message" in data ? (data as { message: string }).message : dataText}`,
       );
     }
 
@@ -379,7 +389,7 @@ export class JupyterLabAdapter {
     for (const notebook of notebooks) {
       let foundSession = null;
       for (const [, session] of this.notebookSessions) {
-        const sessionInfo = this.getNotebookSessionInfo(session);
+        const sessionInfo = session.session;
         if (
           sessionInfo.fileId === notebook.path ||
           sessionInfo.fileId.endsWith(notebook.path)
@@ -390,7 +400,7 @@ export class JupyterLabAdapter {
       }
 
       if (foundSession) {
-        const sessionInfo = this.getNotebookSessionInfo(foundSession);
+        const sessionInfo = foundSession.session;
         const notebookContent = foundSession.getNotebookContent();
         const status = foundSession.isConnected()
           ? "connected"
@@ -488,11 +498,12 @@ export class JupyterLabAdapter {
     // Store cookies from response
     this.cookieManager.parseResponseHeaders(response.headers);
 
-    let data: any = await response.text();
+    let dataText: string = await response.text();
+    let data: unknown = null;
 
-    if (data.length > 0) {
+    if (dataText.length > 0) {
       try {
-        data = JSON.parse(data);
+        data = JSON.parse(dataText);
       } catch {
         logger.error("Not a JSON response body.", response);
       }
@@ -500,11 +511,11 @@ export class JupyterLabAdapter {
 
     if (!response.ok) {
       throw new Error(
-        `Server returned ${response.status}: ${data.message || data}`,
+        `Server returned ${response.status}: ${data && typeof data === "object" && "message" in data ? (data as { message: string }).message : dataText}`,
       );
     }
 
-    return data;
+    return data as ISessionModel;
   }
 
   /**
@@ -512,8 +523,31 @@ export class JupyterLabAdapter {
    * @param contents Contents API response
    * @returns Array of notebook objects
    */
-  private _extractNotebooks(contents: any): any[] {
-    const notebooks: any[] = [];
+  private _extractNotebooks(contents: {
+    type: string;
+    content?: any[];
+    path?: string;
+    name?: string;
+    last_modified?: string;
+    created?: string;
+    size?: number;
+    writable?: boolean;
+  }): Array<{
+    path: string;
+    name: string;
+    last_modified?: string;
+    created?: string;
+    size?: number;
+    writable?: boolean;
+  }> {
+    const notebooks: Array<{
+      path: string;
+      name: string;
+      last_modified?: string;
+      created?: string;
+      size?: number;
+      writable?: boolean;
+    }> = [];
 
     if (contents.type === "directory") {
       // Recursively process directory contents
@@ -536,8 +570,8 @@ export class JupyterLabAdapter {
     } else if (contents.type === "notebook") {
       // Single notebook file
       notebooks.push({
-        path: contents.path,
-        name: contents.name,
+        path: contents.path!,
+        name: contents.name!,
         last_modified: contents.last_modified,
         created: contents.created,
         size: contents.size,
@@ -546,27 +580,5 @@ export class JupyterLabAdapter {
     }
 
     return notebooks;
-  }
-
-  /**
-   * Get session information from a DocumentSession
-   * @param session DocumentSession
-   * @returns Session model
-   */
-  private getSessionInfo(session: DocumentSession): ISessionModel {
-    // We need to access the private session property
-    // This is a workaround to avoid modifying the DocumentSession class
-    return (session as any).session;
-  }
-
-  /**
-   * Get session information from a NotebookSession
-   * @param session NotebookSession
-   * @returns Session model
-   */
-  private getNotebookSessionInfo(session: NotebookSession): ISessionModel {
-    // We need to access the private session property
-    // This is a workaround to avoid modifying the NotebookSession class
-    return (session as any).session;
   }
 }

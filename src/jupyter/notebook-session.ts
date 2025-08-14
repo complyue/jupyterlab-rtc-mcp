@@ -3,6 +3,7 @@ import { PromiseDelegate } from "@lumino/coreutils";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { YNotebook } from "@jupyter/ydoc";
+import { INotebookContent, MultilineString } from "@jupyterlab/nbformat";
 import { cookieManager } from "./cookie-manager.js";
 import { logger } from "../utils/logger.js";
 
@@ -29,7 +30,7 @@ export interface IKernelSessionModel {
  * embedded Y.Doc from YNotebook instead of creating a separate Y.Doc.
  */
 export class NotebookSession {
-  private session: ISessionModel;
+  private _session: ISessionModel;
   private baseUrl: string;
   private token: string | undefined;
   private cookieManager: typeof cookieManager;
@@ -43,7 +44,7 @@ export class NotebookSession {
   private kernelSession: IKernelSessionModel | null;
 
   constructor(session: ISessionModel, baseUrl: string, token?: string) {
-    this.session = session;
+    this._session = session;
     this.baseUrl = baseUrl;
     this.token = token;
     this.cookieManager = cookieManager;
@@ -59,9 +60,10 @@ export class NotebookSession {
     this.maxReconnectAttempts = 5;
     this._connectionPromise = null;
     this.kernelSession = null;
+  }
 
-    // Note: We don't initialize document structure immediately
-    // We'll wait for sync with the server to get existing content
+  get session() {
+    return this._session;
   }
 
   /**
@@ -83,7 +85,7 @@ export class NotebookSession {
       new PromiseDelegate<void>());
     _connectionPromise.promise.catch((error) => {
       logger.error(
-        `Unhandled connection promise rejection for notebook ${this.session.fileId}:`,
+        `Unhandled connection promise rejection for notebook ${this._session.fileId}:`,
         error,
       );
     });
@@ -91,11 +93,11 @@ export class NotebookSession {
     const wsUrl = URLExt.join(
       this.baseUrl.replace(/^http/, "ws"),
       "api/collaboration/room",
-      `${this.session.format}:${this.session.type}:${this.session.fileId}`,
+      `${this._session.format}:${this._session.type}:${this._session.fileId}`,
     );
 
     const wsUrlWithParams = new URL(wsUrl);
-    wsUrlWithParams.searchParams.append("sessionId", this.session.sessionId);
+    wsUrlWithParams.searchParams.append("sessionId", this._session.sessionId);
 
     // Add cookies if available
     if (this.cookieManager.hasCookies()) {
@@ -111,7 +113,7 @@ export class NotebookSession {
     // Create WebSocket provider using the embedded Y.Doc from YNotebook
     this.provider = new WebsocketProvider(
       wsUrlWithParams.toString(),
-      `${this.session.format}:${this.session.type}:${this.session.fileId}`,
+      `${this._session.format}:${this._session.type}:${this._session.fileId}`,
       this.yNotebook.ydoc, // Use the embedded Y.Doc from YNotebook
       {
         connect: false,
@@ -132,9 +134,9 @@ export class NotebookSession {
 
     this.provider.on("connection-close", this._onConnectionClosed);
 
-    this.provider.on("connection-error", (error: any) => {
+    this.provider.on("connection-error", (error: unknown) => {
       logger.error(
-        `WebSocket error for notebook ${this.session.fileId}`,
+        `WebSocket error for notebook ${this._session.fileId}`,
         error,
       );
       logger.debug(
@@ -143,12 +145,12 @@ export class NotebookSession {
 
       if (!this.connected && _connectionPromise) {
         logger.debug(
-          `Rejecting connection promise for notebook ${this.session.fileId}`,
+          `Rejecting connection promise for notebook ${this._session.fileId}`,
         );
         _connectionPromise.reject(error);
       } else if (this.connected) {
         logger.debug(
-          `WebSocket error occurred after connection was established for notebook ${this.session.fileId}`,
+          `WebSocket error occurred after connection was established for notebook ${this._session.fileId}`,
         );
         // Handle the error appropriately - e.g., trigger reconnection
         this.connected = false;
@@ -160,7 +162,7 @@ export class NotebookSession {
           this.handleReconnect();
         } catch (reconnectError) {
           logger.error(
-            `Error during reconnection handling for notebook ${this.session.fileId}:`,
+            `Error during reconnection handling for notebook ${this._session.fileId}:`,
             reconnectError,
           );
         }
@@ -185,14 +187,14 @@ export class NotebookSession {
     this.connected = false;
     this.synced = false;
     this.kernelSession = null;
-    logger.debug(`Disconnected from notebook: ${this.session.fileId}`);
+    logger.debug(`Disconnected from notebook: ${this._session.fileId}`);
   }
 
   /**
    * Reconnect to the JupyterLab WebSocket server
    */
   async reconnect(): Promise<void> {
-    logger.debug(`Reconnecting to notebook: ${this.session.fileId}`);
+    logger.debug(`Reconnecting to notebook: ${this._session.fileId}`);
 
     // Disconnect first if already connected
     if (this.provider) {
@@ -218,16 +220,16 @@ export class NotebookSession {
         this.kernelSession = await this._requestKernelSession();
         if (this.kernelSession) {
           logger.debug(
-            `Kernel session restored for notebook: ${this.session.fileId}`,
+            `Kernel session restored for notebook: ${this._session.fileId}`,
           );
         } else {
           logger.debug(
-            `No kernel session available after reconnecting to notebook: ${this.session.fileId}`,
+            `No kernel session available after reconnecting to notebook: ${this._session.fileId}`,
           );
         }
       } catch (error) {
         logger.error(
-          `Error restoring kernel session for notebook ${this.session.fileId}:`,
+          `Error restoring kernel session for notebook ${this._session.fileId}:`,
           error,
         );
       }
@@ -317,7 +319,7 @@ export class NotebookSession {
   /**
    * Get the notebook content from the YNotebook
    */
-  getNotebookContent(): any {
+  getNotebookContent(): INotebookContent {
     // Check if we're connected to the WebSocket server
     if (!this.connected) {
       throw new Error(
@@ -332,24 +334,7 @@ export class NotebookSession {
       );
     }
 
-    // Get the notebook content using YNotebook
-    const notebookContent = this.yNotebook.toJSON();
-
-    // Transform the content to match the expected format
-    // Note: YNotebook cells don't have 'id' field by default, we need to generate one
-    const cells = notebookContent.cells.map((cell: any, index: number) => ({
-      id:
-        cell.id ||
-        `cell-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${index}`,
-      content: cell.source,
-      type: cell.cell_type,
-      metadata: cell.metadata || {},
-    }));
-
-    return {
-      cells,
-      metadata: notebookContent.metadata || {},
-    };
+    return this.yNotebook.toJSON();
   }
 
   /**
@@ -361,7 +346,7 @@ export class NotebookSession {
     // Find the cell by ID in the YNotebook
     const notebookContent = this.yNotebook.toJSON();
     const cellIndex = notebookContent.cells.findIndex(
-      (cell: any) => cell.id === cellId,
+      (cell) => cell.id === cellId,
     );
 
     if (cellIndex !== -1) {
@@ -433,7 +418,7 @@ export class NotebookSession {
     // Find the cell by ID in the YNotebook
     const notebookContent = this.yNotebook.toJSON();
     const cellIndex = notebookContent.cells.findIndex(
-      (cell: any) => cell.id === cellId,
+      (cell) => cell.id === cellId,
     );
 
     if (cellIndex === -1) {
@@ -458,12 +443,12 @@ export class NotebookSession {
       setTimeout(() => {
         if (!this.connected) {
           logger.debug(
-            `Attempting to reconnect to notebook ${this.session.fileId} (attempt ${this.reconnectAttempts})`,
+            `Attempting to reconnect to notebook ${this._session.fileId} (attempt ${this.reconnectAttempts})`,
           );
-          this.connect().catch((error: any) => {
+          this.connect().catch((error: unknown) => {
             let errorMessage = "Unknown reconnection error";
             if (error) {
-              if (error.message) {
+              if (error instanceof Error) {
                 errorMessage = error.message;
               } else if (typeof error === "string") {
                 errorMessage = error;
@@ -472,7 +457,7 @@ export class NotebookSession {
               }
             }
             logger.error(
-              `Reconnection failed for notebook ${this.session.fileId}: ${errorMessage}`,
+              `Reconnection failed for notebook ${this._session.fileId}: ${errorMessage}`,
             );
             logger.debug(
               `Error type: ${typeof error}, Error details: ${JSON.stringify(error)}`,
@@ -482,7 +467,7 @@ export class NotebookSession {
       }, delay);
     } else {
       logger.error(
-        `Max reconnection attempts reached for notebook ${this.session.fileId}`,
+        `Max reconnection attempts reached for notebook ${this._session.fileId}`,
       );
     }
   }
@@ -510,11 +495,11 @@ export class NotebookSession {
    * Handle connection close event from the WebSocket provider
    * @param event Connection close event
    */
-  private _onConnectionClosed = (event: any) => {
+  private _onConnectionClosed = (event: unknown) => {
     this.connected = false;
     this.synced = false;
     this.kernelSession = null;
-    logger.error(`Disconnected from notebook: ${this.session.fileId}`, event);
+    logger.error(`Disconnected from notebook: ${this._session.fileId}`, event);
     logger.debug(`Connection closed event details: ${JSON.stringify(event)}`);
     logger.debug(`Connection promise exists: ${!!this._connectionPromise}`);
 
@@ -522,7 +507,9 @@ export class NotebookSession {
     if (this._connectionPromise) {
       logger.debug(`Rejecting connection promise due to connection close`);
       this._connectionPromise.reject(
-        new Error(`Connection closed: ${event.reason || "Unknown reason"}`),
+        new Error(
+          `Connection closed: ${event && typeof event === "object" && "reason" in event ? (event as { reason: string }).reason : "Unknown reason"}`,
+        ),
       );
       this._connectionPromise = null;
     }
@@ -542,7 +529,7 @@ export class NotebookSession {
       const url = URLExt.join(
         settings.baseUrl,
         "api/sessions",
-        this.session.sessionId,
+        this._session.sessionId,
       );
 
       const init: RequestInit = {
@@ -571,11 +558,12 @@ export class NotebookSession {
       // Store cookies from response
       this.cookieManager.parseResponseHeaders(response.headers);
 
-      let data: any = await response.text();
+      let dataText: string = await response.text();
+      let data: unknown = null;
 
-      if (data.length > 0) {
+      if (dataText.length > 0) {
         try {
-          data = JSON.parse(data);
+          data = JSON.parse(dataText);
         } catch {
           logger.error("Not a JSON response body.", response);
           return null;
@@ -584,16 +572,17 @@ export class NotebookSession {
 
       if (!response.ok) {
         logger.error(
-          `Server returned ${response.status}: ${data.message || data}`,
+          `Server returned ${response.status}: ${data && typeof data === "object" && "message" in data ? (data as { message: string }).message : dataText}`,
         );
         return null;
       }
 
       // Extract kernel information from the session response
-      if (data.kernel) {
+      if (data && typeof data === "object" && "kernel" in data && data.kernel) {
+        const kernel = data.kernel as { id: string; name: string };
         return {
-          id: data.kernel.id,
-          name: data.kernel.name,
+          id: kernel.id,
+          name: kernel.name,
           lastActivity: new Date().toISOString(),
           executionState: "unknown", // Will be updated when we receive status updates
           connectionStatus: "connected",
@@ -648,7 +637,7 @@ export class NotebookSession {
    * @param code Code to execute
    * @returns Promise that resolves with execution result
    */
-  async executeCode(code: string): Promise<any> {
+  async executeCode(code: MultilineString): Promise<any> {
     if (!this.connected) {
       throw new Error("Notebook session is not connected");
     }
@@ -703,11 +692,12 @@ export class NotebookSession {
       // Store cookies from response
       this.cookieManager.parseResponseHeaders(response.headers);
 
-      let data: any = await response.text();
+      let dataText: string = await response.text();
+      let data: unknown = null;
 
-      if (data.length > 0) {
+      if (dataText.length > 0) {
         try {
-          data = JSON.parse(data);
+          data = JSON.parse(dataText);
         } catch {
           logger.error("Not a JSON response body.", response);
           throw new Error("Invalid response from kernel execution");
@@ -715,7 +705,9 @@ export class NotebookSession {
       }
 
       if (!response.ok) {
-        throw new Error(`Kernel execution failed: ${data.message || data}`);
+        throw new Error(
+          `Kernel execution failed: ${data && typeof data === "object" && "message" in data ? (data as { message: string }).message : dataText}`,
+        );
       }
 
       // Update kernel session status

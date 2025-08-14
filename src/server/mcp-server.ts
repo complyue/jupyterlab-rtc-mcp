@@ -3,6 +3,7 @@ import { z } from "zod";
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
 import { NotebookTools } from "../tools/notebook-tools.js";
 import { DocumentTools } from "../tools/document-tools.js";
+import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
 /**
  * MCP Server implementation for JupyterLab RTC
@@ -440,8 +441,8 @@ export class JupyterLabMCPServer {
    * Connect the server to a transport
    * @param transport Transport to connect to
    */
-  async connect(transport: unknown): Promise<void> {
-    await this.server.connect(transport as any);
+  async connect(transport: Transport): Promise<void> {
+    await this.server.connect(transport);
   }
 
   /**
