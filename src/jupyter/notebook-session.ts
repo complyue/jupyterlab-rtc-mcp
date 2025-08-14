@@ -277,14 +277,9 @@ export class NotebookSession {
       });
     }
 
-    // If we don't have a provider, try to reconnect
-    if (!this.provider) {
-      logger.debug(`No provider found, attempting to reconnect...`);
-      await this.reconnect();
-
-      // After reconnecting, wait for synchronization
-      return this.ensureSynchronized();
-    }
+    throw new Error(
+      `Notebook session is not connected to the WebSocket server.`,
+    );
   }
 
   /**
