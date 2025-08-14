@@ -6,13 +6,14 @@ import WebSocket from "ws";
 
 class CookieWS extends WebSocket {
   constructor(url: string | URL, options?: WebSocket.ClientOptions) {
+    const cookieHeader = cookieManager.getCookieHeader();
+    // logger.debug(`WS using cookie:\n  ${cookieHeader}`);
     super(url, {
       ...options,
       headers: {
-        Cookie: cookieManager.getCookieHeader(),
+        Cookie: cookieHeader,
       },
     });
-    logger.debug(`WS using cookie:\n  ${cookieManager.getCookieHeader()}`);
   }
 }
 
@@ -32,7 +33,6 @@ export class CookieWebsocketProvider extends WebsocketProvider {
       resyncInterval?: number;
       maxBackoffTime?: number;
       disableBc?: boolean;
-      cookieHeader?: string;
     } = {},
   ) {
     super(serverUrl, roomname, doc, {

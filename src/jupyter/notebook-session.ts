@@ -90,16 +90,14 @@ export class NotebookSession {
       `${this._session.format}:${this._session.type}:${this._session.fileId}`,
     );
 
-    const wsUrlWithParams = new URL(wsUrl);
-    wsUrlWithParams.searchParams.append("sessionId", this._session.sessionId);
-
     // Create custom WebSocket provider using the embedded Y.Doc from YNotebook
     this.provider = new CookieWebsocketProvider(
-      wsUrlWithParams.toString(),
+      wsUrl,
       `${this._session.format}:${this._session.type}:${this._session.fileId}`,
       this.yNotebook.ydoc, // Use the embedded Y.Doc from YNotebook
       {
         connect: false,
+        params: { sessionId: this._session.sessionId, },
       },
     );
 
