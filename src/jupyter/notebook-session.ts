@@ -13,6 +13,14 @@ export interface ISessionModel {
   sessionId: string;
 }
 
+export interface IKernelSessionModel {
+  id: string;
+  name: string;
+  lastActivity: string;
+  executionState: string;
+  connectionStatus: string;
+}
+
 /**
  * NotebookSession represents a session with a JupyterLab notebook
  *
@@ -32,6 +40,7 @@ export class NotebookSession {
   private reconnectAttempts: number;
   private maxReconnectAttempts: number;
   private _connectionPromise: PromiseDelegate<void> | null;
+  private kernelSession: IKernelSessionModel | null;
 
   constructor(session: ISessionModel, baseUrl: string, token?: string) {
     this.session = session;
@@ -49,6 +58,7 @@ export class NotebookSession {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this._connectionPromise = null;
+    this.kernelSession = null;
 
     // Note: We don't initialize document structure immediately
     // We'll wait for sync with the server to get existing content
@@ -129,6 +139,9 @@ export class NotebookSession {
     // Connect to the WebSocket server
     this.provider.connect();
 
+    // Initialize kernel session
+    await this._initializeKernelSession();
+
     // Return the connection promise
     return this._connectionPromise.promise;
   }
@@ -143,6 +156,7 @@ export class NotebookSession {
     }
     this.connected = false;
     this.synced = false;
+    this.kernelSession = null;
     logger.debug(`Disconnected from notebook: ${this.session.fileId}`);
   }
 
@@ -440,7 +454,220 @@ export class NotebookSession {
   private _onConnectionClosed = (event: any) => {
     this.connected = false;
     this.synced = false;
+    this.kernelSession = null;
     logger.error(`Disconnected from notebook: ${this.session.fileId}`, event);
     this.handleReconnect();
   };
+
+  /**
+   * Initialize the kernel session for this notebook
+   */
+  private async _initializeKernelSession(): Promise<void> {
+    try {
+      // Request kernel session information from JupyterLab server
+      const kernelSession = await this._requestKernelSession();
+      if (kernelSession) {
+        this.kernelSession = kernelSession;
+        logger.debug(
+          `Kernel session initialized for notebook ${this.session.fileId}: ${kernelSession.id}`,
+        );
+      }
+    } catch (error) {
+      logger.error(
+        `Failed to initialize kernel session for notebook ${this.session.fileId}:`,
+        error,
+      );
+      // Don't throw here - we can still function without a kernel session
+    }
+  }
+
+  /**
+   * Request kernel session information from JupyterLab server
+   */
+  private async _requestKernelSession(): Promise<IKernelSessionModel | null> {
+    try {
+      const { ServerConnection } = await import("@jupyterlab/services");
+      const { URLExt } = await import("@jupyterlab/coreutils");
+
+      const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
+      const url = URLExt.join(
+        settings.baseUrl,
+        "api/sessions",
+        this.session.sessionId,
+      );
+
+      const init: RequestInit = {
+        method: "GET",
+      };
+
+      // Add authorization header if token is provided
+      if (this.token) {
+        init.headers = {
+          ...init.headers,
+          Authorization: `token ${this.token}`,
+        };
+      }
+
+      // Add cookies if available
+      if (this.cookieManager.hasCookies()) {
+        init.headers = {
+          ...init.headers,
+          Cookie: this.cookieManager.getCookieHeader(),
+        };
+      }
+
+      let response: Response;
+      response = await ServerConnection.makeRequest(url, init, settings);
+
+      // Store cookies from response
+      this.cookieManager.parseResponseHeaders(response.headers);
+
+      let data: any = await response.text();
+
+      if (data.length > 0) {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          logger.error("Not a JSON response body.", response);
+          return null;
+        }
+      }
+
+      if (!response.ok) {
+        logger.error(
+          `Server returned ${response.status}: ${data.message || data}`,
+        );
+        return null;
+      }
+
+      // Extract kernel information from the session response
+      if (data.kernel) {
+        return {
+          id: data.kernel.id,
+          name: data.kernel.name,
+          lastActivity: new Date().toISOString(),
+          executionState: "unknown", // Will be updated when we receive status updates
+          connectionStatus: "connected",
+        };
+      }
+
+      return null;
+    } catch (error) {
+      logger.error(`Error requesting kernel session:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Update kernel session status
+   * @param executionState New execution state
+   * @param connectionStatus New connection status
+   */
+  private _updateKernelSessionStatus(
+    executionState?: string,
+    connectionStatus?: string,
+  ): void {
+    if (!this.kernelSession) {
+      return;
+    }
+
+    if (executionState) {
+      this.kernelSession.executionState = executionState;
+    }
+
+    if (connectionStatus) {
+      this.kernelSession.connectionStatus = connectionStatus;
+    }
+
+    this.kernelSession.lastActivity = new Date().toISOString();
+  }
+
+  /**
+   * Get the kernel session information
+   * @returns Kernel session model or null if no kernel session exists
+   */
+  getKernelSession(): IKernelSessionModel | null {
+    return this.kernelSession;
+  }
+
+  /**
+   * Execute code in the kernel session
+   * @param code Code to execute
+   * @returns Promise that resolves with execution result
+   */
+  async executeCode(code: string): Promise<any> {
+    if (!this.kernelSession) {
+      throw new Error("No kernel session available");
+    }
+
+    if (!this.connected) {
+      throw new Error("Notebook session is not connected");
+    }
+
+    try {
+      const { ServerConnection } = await import("@jupyterlab/services");
+      const { URLExt } = await import("@jupyterlab/coreutils");
+
+      const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
+      const url = URLExt.join(
+        settings.baseUrl,
+        "api/kernels",
+        this.kernelSession.id,
+        "execute",
+      );
+
+      const init: RequestInit = {
+        method: "POST",
+        body: JSON.stringify({
+          code,
+          silent: false,
+        }),
+      };
+
+      // Add authorization header if token is provided
+      if (this.token) {
+        init.headers = {
+          ...init.headers,
+          Authorization: `token ${this.token}`,
+        };
+      }
+
+      // Add cookies if available
+      if (this.cookieManager.hasCookies()) {
+        init.headers = {
+          ...init.headers,
+          Cookie: this.cookieManager.getCookieHeader(),
+        };
+      }
+
+      let response: Response;
+      response = await ServerConnection.makeRequest(url, init, settings);
+
+      // Store cookies from response
+      this.cookieManager.parseResponseHeaders(response.headers);
+
+      let data: any = await response.text();
+
+      if (data.length > 0) {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          logger.error("Not a JSON response body.", response);
+          throw new Error("Invalid response from kernel execution");
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(`Kernel execution failed: ${data.message || data}`);
+      }
+
+      // Update kernel session status
+      this._updateKernelSessionStatus("busy");
+
+      return data;
+    } catch (error) {
+      logger.error(`Error executing code in kernel:`, error);
+      throw error;
+    }
+  }
 }
