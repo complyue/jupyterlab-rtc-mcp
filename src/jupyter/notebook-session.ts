@@ -37,8 +37,6 @@ export class NotebookSession {
   private provider: CookieWebsocketProvider | null;
   private connected: boolean;
   private synced: boolean;
-  private reconnectAttempts: number;
-  private maxReconnectAttempts: number;
   private _connectionPromise: PromiseDelegate<void> | null;
   private kernelSession: IKernelSessionModel | null;
 
@@ -54,8 +52,6 @@ export class NotebookSession {
     this.provider = null;
     this.connected = false;
     this.synced = false;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
     this._connectionPromise = null;
     this.kernelSession = null;
   }
@@ -111,7 +107,6 @@ export class NotebookSession {
     this.provider.on("status", (event: { status: string }) => {
       if (event.status === "connected") {
         this.connected = true;
-        this.reconnectAttempts = 0;
         // Don't resolve yet, wait for sync
       }
     });
@@ -139,20 +134,9 @@ export class NotebookSession {
         logger.debug(
           `WebSocket error occurred after connection was established for notebook ${this._session.fileId}`,
         );
-        // Handle the error appropriately - e.g., trigger reconnection
         this.connected = false;
         this.synced = false;
         this.kernelSession = null;
-
-        // Handle the error properly to prevent unhandled promise rejection
-        try {
-          this.handleReconnect();
-        } catch (reconnectError) {
-          logger.error(
-            `Error during reconnection handling for notebook ${this._session.fileId}:`,
-            reconnectError,
-          );
-        }
       }
     });
 
@@ -420,46 +404,6 @@ export class NotebookSession {
   }
 
   /**
-   * Handle reconnection logic
-   */
-  private handleReconnect(): void {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-
-      setTimeout(() => {
-        if (!this.connected) {
-          logger.debug(
-            `Attempting to reconnect to notebook ${this._session.fileId} (attempt ${this.reconnectAttempts})`,
-          );
-          this.connect().catch((error: unknown) => {
-            let errorMessage = "Unknown reconnection error";
-            if (error) {
-              if (error instanceof Error) {
-                errorMessage = error.message;
-              } else if (typeof error === "string") {
-                errorMessage = error;
-              } else {
-                errorMessage = JSON.stringify(error);
-              }
-            }
-            logger.error(
-              `Reconnection failed for notebook ${this._session.fileId}: ${errorMessage}`,
-            );
-            logger.debug(
-              `Error type: ${typeof error}, Error details: ${JSON.stringify(error)}`,
-            );
-          });
-        }
-      }, delay);
-    } else {
-      logger.error(
-        `Max reconnection attempts reached for notebook ${this._session.fileId}`,
-      );
-    }
-  }
-
-  /**
    * Handle sync event from the WebSocket provider
    * @param isSynced Whether the document is synchronized
    */
@@ -500,8 +444,6 @@ export class NotebookSession {
       );
       this._connectionPromise = null;
     }
-
-    this.handleReconnect();
   };
 
   /**
