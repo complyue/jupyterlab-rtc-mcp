@@ -3,24 +3,31 @@
  * across HTTP requests and WebSocket connections to Jupyter server
  */
 
-export interface CookieJar {
-  [key: string]: string;
-}
+import { Cookie, CookieJar } from "tough-cookie";
+
+import { logger } from "../utils/logger";
 
 export class CookieManager {
-  private cookies: CookieJar = {};
+  private cookies: CookieJar;
+
+  constructor() {
+    this.cookies = new CookieJar();
+  }
 
   /**
    * Parse cookies from a Set-Cookie header
    * @param setCookieHeader Set-Cookie header value
    */
   parseSetCookieHeader(setCookieHeader: string): void {
-    const cookieParts = setCookieHeader.split(";");
-    const firstPart = cookieParts[0].trim();
-    const [name, value] = firstPart.split("=");
-
-    if (name && value) {
-      this.cookies[name.trim()] = value.trim();
+    try {
+      const cookie = Cookie.parse(setCookieHeader);
+      if (cookie) {
+        this.cookies.setCookieSync(cookie, "http://localhost");
+      } else {
+        logger.warn(`Failed to parse cookie from header: ${setCookieHeader}`);
+      }
+    } catch (error) {
+      logger.error(`Error parsing cookie header: ${setCookieHeader}`, error);
     }
   }
 
@@ -31,9 +38,15 @@ export class CookieManager {
   parseResponseHeaders(headers: Headers): void {
     const setCookieHeaders = headers.get("set-cookie");
     if (setCookieHeaders) {
-      // Handle multiple Set-Cookie headers
-      const cookieHeaders = setCookieHeaders.split(", ");
-      cookieHeaders.forEach((header) => this.parseSetCookieHeader(header));
+      // Handle multiple Set-Cookie headers properly
+      const cookieHeaders = setCookieHeaders.split("\n");
+
+      cookieHeaders.forEach((header) => {
+        const trimmedHeader = header.trim();
+        if (trimmedHeader) {
+          this.parseSetCookieHeader(trimmedHeader);
+        }
+      });
     }
   }
 
@@ -42,10 +55,8 @@ export class CookieManager {
    * @returns Cookie header string
    */
   getCookieHeader(): string {
-    const cookieStrings = Object.entries(this.cookies).map(
-      ([name, value]) => `${name}=${value}`,
-    );
-    return cookieStrings.join("; ");
+    const headerValue = this.cookies.getCookieStringSync("http://localhost");
+    return headerValue;
   }
 
   /**
@@ -53,32 +64,15 @@ export class CookieManager {
    * @returns True if we have cookies
    */
   hasCookies(): boolean {
-    return Object.keys(this.cookies).length > 0;
+    const cookies = this.cookies.getCookiesSync("http://localhost");
+    return cookies.length > 0;
   }
 
   /**
    * Clear all cookies
    */
   clear(): void {
-    this.cookies = {};
-  }
-
-  /**
-   * Get a specific cookie value
-   * @param name Cookie name
-   * @returns Cookie value or undefined
-   */
-  getCookie(name: string): string | undefined {
-    return this.cookies[name];
-  }
-
-  /**
-   * Set a cookie value
-   * @param name Cookie name
-   * @param value Cookie value
-   */
-  setCookie(name: string, value: string): void {
-    this.cookies[name] = value;
+    this.cookies.removeAllCookiesSync();
   }
 }
 
