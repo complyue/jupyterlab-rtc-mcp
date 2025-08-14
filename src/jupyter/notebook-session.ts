@@ -1,10 +1,10 @@
 import { URLExt } from "@jupyterlab/coreutils";
 import { PromiseDelegate } from "@lumino/coreutils";
 import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
 import { YNotebook } from "@jupyter/ydoc";
 import { INotebookContent, MultilineString } from "@jupyterlab/nbformat";
 import { cookieManager } from "./cookie-manager.js";
+import { CookieWebsocketProvider } from "./websocket-provider.js";
 import { logger } from "../utils/logger.js";
 
 export interface ISessionModel {
@@ -33,9 +33,8 @@ export class NotebookSession {
   private _session: ISessionModel;
   private baseUrl: string;
   private token: string | undefined;
-  private cookieManager: typeof cookieManager;
   private yNotebook: YNotebook;
-  private provider: WebsocketProvider | null;
+  private provider: CookieWebsocketProvider | null;
   private connected: boolean;
   private synced: boolean;
   private reconnectAttempts: number;
@@ -47,7 +46,6 @@ export class NotebookSession {
     this._session = session;
     this.baseUrl = baseUrl;
     this.token = token;
-    this.cookieManager = cookieManager;
 
     // Create YNotebook which already has an embedded Y.Doc
     // This is the key change - we don't create a separate Y.Doc
@@ -99,19 +97,8 @@ export class NotebookSession {
     const wsUrlWithParams = new URL(wsUrl);
     wsUrlWithParams.searchParams.append("sessionId", this._session.sessionId);
 
-    // Add cookies if available
-    if (this.cookieManager.hasCookies()) {
-      const cookieHeader = this.cookieManager.getCookieHeader();
-      // For WebSocket connections, we need to pass cookies as a query parameter
-      // since WebSocket API doesn't support custom headers directly
-      wsUrlWithParams.searchParams.append(
-        "cookies",
-        encodeURIComponent(cookieHeader),
-      );
-    }
-
-    // Create WebSocket provider using the embedded Y.Doc from YNotebook
-    this.provider = new WebsocketProvider(
+    // Create custom WebSocket provider using the embedded Y.Doc from YNotebook
+    this.provider = new CookieWebsocketProvider(
       wsUrlWithParams.toString(),
       `${this._session.format}:${this._session.type}:${this._session.fileId}`,
       this.yNotebook.ydoc, // Use the embedded Y.Doc from YNotebook
@@ -545,10 +532,10 @@ export class NotebookSession {
       }
 
       // Add cookies if available
-      if (this.cookieManager.hasCookies()) {
+      if (cookieManager.hasCookies()) {
         init.headers = {
           ...init.headers,
-          Cookie: this.cookieManager.getCookieHeader(),
+          Cookie: cookieManager.getCookieHeader(),
         };
       }
 
@@ -556,7 +543,7 @@ export class NotebookSession {
       response = await ServerConnection.makeRequest(url, init, settings);
 
       // Store cookies from response
-      this.cookieManager.parseResponseHeaders(response.headers);
+      cookieManager.parseResponseHeaders(response.headers);
 
       let dataText: string = await response.text();
       let data: unknown = null;
@@ -679,10 +666,10 @@ export class NotebookSession {
       }
 
       // Add cookies if available
-      if (this.cookieManager.hasCookies()) {
+      if (cookieManager.hasCookies()) {
         init.headers = {
           ...init.headers,
-          Cookie: this.cookieManager.getCookieHeader(),
+          Cookie: cookieManager.getCookieHeader(),
         };
       }
 
@@ -690,7 +677,7 @@ export class NotebookSession {
       response = await ServerConnection.makeRequest(url, init, settings);
 
       // Store cookies from response
-      this.cookieManager.parseResponseHeaders(response.headers);
+      cookieManager.parseResponseHeaders(response.headers);
 
       let dataText: string = await response.text();
       let data: unknown = null;

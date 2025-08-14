@@ -27,7 +27,6 @@ export class JupyterLabAdapter {
   private documentSessions: Map<string, DocumentSession>;
   private notebookSessions: Map<string, NotebookSession>;
   private token: string | undefined;
-  private cookieManager: typeof cookieManager;
 
   constructor(baseUrl?: string, token?: string) {
     this.baseUrl =
@@ -36,7 +35,6 @@ export class JupyterLabAdapter {
 
     this.documentSessions = new Map();
     this.notebookSessions = new Map();
-    this.cookieManager = cookieManager;
   }
 
   /**
@@ -349,10 +347,10 @@ export class JupyterLabAdapter {
     }
 
     // Add cookies if available
-    if (this.cookieManager.hasCookies()) {
+    if (cookieManager.hasCookies()) {
       init.headers = {
         ...init.headers,
-        Cookie: this.cookieManager.getCookieHeader(),
+        Cookie: cookieManager.getCookieHeader(),
       };
     }
 
@@ -360,7 +358,7 @@ export class JupyterLabAdapter {
     response = await ServerConnection.makeRequest(url, init, settings);
 
     // Store cookies from response
-    this.cookieManager.parseResponseHeaders(response.headers);
+    cookieManager.parseResponseHeaders(response.headers);
 
     let dataText: string = await response.text();
     let data = null;
@@ -485,10 +483,10 @@ export class JupyterLabAdapter {
     }
 
     // Add cookies if available
-    if (this.cookieManager.hasCookies()) {
+    if (cookieManager.hasCookies()) {
       init.headers = {
         ...init.headers,
-        Cookie: this.cookieManager.getCookieHeader(),
+        Cookie: cookieManager.getCookieHeader(),
       };
     }
 
@@ -496,7 +494,7 @@ export class JupyterLabAdapter {
     response = await ServerConnection.makeRequest(url, init, settings);
 
     // Store cookies from response
-    this.cookieManager.parseResponseHeaders(response.headers);
+    cookieManager.parseResponseHeaders(response.headers);
 
     let dataText: string = await response.text();
     let data: unknown = null;

@@ -19,6 +19,7 @@
     "@modelcontextprotocol/sdk": "^1.17.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "ws": "^8.18.3",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.27",
     "zod": "^3.25.76"
@@ -27,6 +28,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^22.17.1",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.39.1",
     "@typescript-eslint/parser": "^8.39.1",
     "eslint": "^9.33.0",
