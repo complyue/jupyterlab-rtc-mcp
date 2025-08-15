@@ -1,5 +1,6 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
-import { JupyterLabAdapter } from "../jupyter/adapter.js";
+
+import { JupyterLabAdapter, executeJupyterCell } from "../jupyter/adapter.js";
 import { logger } from "../utils/logger.js";
 
 import {
@@ -213,9 +214,6 @@ export class NotebookTools {
       // Get notebook content
       const notebookContent = nbSession.getYNotebook().toJSON();
 
-      // Get kernel session information
-      const kernelSession = await nbSession.getKernelSession();
-
       // Get file information using contents API
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
@@ -275,10 +273,11 @@ export class NotebookTools {
       };
 
       // Add kernel information if available
-      if (kernelSession) {
+      const kernelConn = await nbSession.getKernelConnection();
+      if (kernelConn) {
         result.kernel = {
-          id: kernelSession.id,
-          name: kernelSession.name,
+          id: kernelConn.id,
+          name: kernelConn.name,
         };
       }
 
@@ -397,9 +396,9 @@ export class NotebookTools {
 
       // Execute cells if requested
       if (exec !== false) {
-        const kernelSessionId = (await nbSession.ensureKernelSession()).id;
+        const kernelConn = await nbSession.ensureKernelConnection();
         for (const cell of cells2exec) {
-          await nbSession.executeCell(cell, kernelSessionId);
+          await executeJupyterCell(cell, kernelConn);
         }
       }
 
@@ -473,9 +472,9 @@ export class NotebookTools {
 
       // Execute cells if requested
       if (exec !== false) {
-        const kernelSessionId = (await nbSession.ensureKernelSession()).id;
+        const kernelConn = await nbSession.ensureKernelConnection();
         for (const cell of cells2exec) {
-          await nbSession.executeCell(cell, kernelSessionId);
+          await executeJupyterCell(cell, kernelConn);
         }
       }
 
@@ -721,17 +720,42 @@ export class NotebookTools {
       // Create or get existing notebook session
       const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
-      await nbSession.getKernelSession(kernel_name);
+      // Get kernel connection with the specified kernel name
+      const kernelConn = await nbSession.getKernelConnection(kernel_name);
+      if (!kernelConn) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  success: false,
+                  message: `Failed to assign kernel '${kernel_name}' to notebook '${path}'. Could not establish kernel connection.`,
+                  kernel_name: kernel_name,
+                  notebook_path: path,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
 
+      // The kernel is now assigned and connected
+      // Return success with kernel information
       return {
         content: [
           {
             type: "text",
             text: JSON.stringify(
               {
+                success: true,
                 message: `Successfully assigned kernel '${kernel_name}' to notebook '${path}'`,
                 kernel_name: kernel_name,
                 notebook_path: path,
+                kernel_id: kernelConn.id,
+                kernel_display_name: kernelConn.name,
               },
               null,
               2,
@@ -741,9 +765,24 @@ export class NotebookTools {
       };
     } catch (error) {
       logger.error("Failed to assign notebook kernel:", error);
-      throw new Error(
-        `Failed to assign notebook kernel: ${error instanceof Error ? error.message : String(error)}`,
-      );
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                success: false,
+                message: `Failed to assign kernel '${kernel_name}' to notebook '${path}': ${error instanceof Error ? error.message : String(error)}`,
+                kernel_name: kernel_name,
+                notebook_path: path,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
     }
   }
 
@@ -765,7 +804,7 @@ export class NotebookTools {
       await nbSession.ensureSynchronized();
 
       const ynb = nbSession.getYNotebook();
-      const kernelSessionId = (await nbSession.ensureKernelSession()).id;
+      const kernelConn = await nbSession.ensureKernelConnection();
 
       // Extract cells based on ranges
       const cellsToExecute: YCodeCell[] = [];
@@ -783,7 +822,7 @@ export class NotebookTools {
 
       // Execute all cells
       for (const cell of cellsToExecute) {
-        await nbSession.executeCell(cell, kernelSessionId);
+        await executeJupyterCell(cell, kernelConn);
       }
 
       return {

@@ -1,14 +1,12 @@
-import * as Y from "yjs";
 import { YCodeCell, YNotebook } from "@jupyter/ydoc";
-import { IOutput } from "@jupyterlab/nbformat";
-import { cookieManager } from "./cookie-manager.js";
-import { logger } from "../utils/logger.js";
-import { DocumentSession, ISessionModel } from "./document-session.js";
+import { KernelManager } from "@jupyterlab/services";
+import { IKernelConnection } from "@jupyterlab/services/lib/kernel/kernel.js";
+import * as Y from "yjs";
 
-export interface IKernelSessionModel {
-  id: string;
-  name: string;
-}
+import { logger } from "../utils/logger.js";
+import { executeJupyterCell } from "./adapter.js";
+import { cookieManager } from "./cookie-manager.js";
+import { DocumentSession, ISessionModel } from "./document-session.js";
 
 /**
  * NotebookSession represents a session with a JupyterLab notebook
@@ -18,21 +16,32 @@ export interface IKernelSessionModel {
  */
 export class NotebookSession extends DocumentSession {
   private yNotebook: YNotebook;
-  private kernelSession: IKernelSessionModel | null;
+  private kernelManager: KernelManager;
+  private kernelConn: IKernelConnection | null;
 
-  constructor(session: ISessionModel, baseUrl: string, token?: string) {
+  constructor(
+    session: ISessionModel,
+    kernelManager: KernelManager,
+    baseUrl: string,
+    token?: string,
+  ) {
     // Create YNotebook which already has an embedded Y.Doc
     const yNotebook = new YNotebook();
     super(session, baseUrl, token, yNotebook.ydoc);
     this.yNotebook = yNotebook;
-    this.kernelSession = null;
+    this.kernelManager = kernelManager;
+    this.kernelConn = null;
   }
 
   /**
    * Disconnect from the JupyterLab WebSocket server
    */
   override async disconnect(): Promise<void> {
-    this.kernelSession = null;
+    const kernelConn = this.kernelConn;
+    if (kernelConn) {
+      kernelConn.dispose();
+      this.kernelConn = null;
+    }
     await super.disconnect();
   }
 
@@ -40,7 +49,11 @@ export class NotebookSession extends DocumentSession {
    * Reconnect to the JupyterLab WebSocket server
    */
   override async reconnect(): Promise<void> {
-    this.kernelSession = null;
+    const kernelConn = this.kernelConn;
+    if (kernelConn) {
+      kernelConn.dispose();
+      this.kernelConn = null;
+    }
     await super.reconnect();
   }
 
@@ -67,12 +80,46 @@ export class NotebookSession extends DocumentSession {
     return super.ensureSynchronized();
   }
 
-  /**
-   * Request kernel session information from JupyterLab server
-   */
-  private async _requestKernelSession(
+  async ensureKernelConnection(
     kernelName?: string,
-  ): Promise<IKernelSessionModel | null> {
+  ): Promise<IKernelConnection> {
+    const kernelConn = await this.getKernelConnection(kernelName);
+    if (!kernelConn) {
+      throw new Error(
+        `No connection with <${kernelName || "default"}> kernel established for notebook ${this._session.fileId}, try assign/restart with some proper kernel and retry!`,
+      );
+    }
+    return kernelConn;
+  }
+
+  /**
+   * Get a kernel connection for the given kernel session
+   */
+  async getKernelConnection(
+    kernelName?: string,
+  ): Promise<IKernelConnection | null> {
+    const kernelConn = this.kernelConn;
+    if (
+      kernelConn &&
+      !kernelConn.isDisposed &&
+      (!kernelName || kernelConn.name === kernelName)
+    ) {
+      return kernelConn;
+    }
+    if (kernelConn) {
+      kernelConn.dispose();
+      this.kernelConn = null;
+    }
+    this.kernelConn = await this._connectKernel(kernelName);
+    return this.kernelConn;
+  }
+
+  /**
+   * Establish a new kernel connection to the JupyterLab server
+   */
+  private async _connectKernel(
+    kernelName?: string,
+  ): Promise<IKernelConnection | null> {
     try {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
@@ -187,25 +234,8 @@ export class NotebookSession extends DocumentSession {
       // Extract kernel information from the session response
       if (data && typeof data === "object" && "kernel" in data && data.kernel) {
         const kernel = data.kernel as { id: string; name: string };
-        return {
-          id: kernel.id,
-          name: kernel.name,
-        };
-      }
-
-      // If this is a new session creation, the response might have a different structure
-      if (
-        data &&
-        typeof data === "object" &&
-        "id" in data &&
-        "kernel" in data &&
-        data.kernel
-      ) {
-        const kernel = data.kernel as { id: string; name: string };
-        return {
-          id: kernel.id,
-          name: kernel.name,
-        };
+        const kernelConn = this.kernelManager.connectTo({ model: kernel });
+        return kernelConn;
       }
 
       return null;
@@ -215,85 +245,34 @@ export class NotebookSession extends DocumentSession {
     }
   }
 
-  async ensureKernelSession(kernelName?: string): Promise<IKernelSessionModel> {
-    const ks = await this.getKernelSession(kernelName);
-    if (!ks) {
-      throw new Error(
-        `No kernel session with <${kernelName || "default"}> kernel established for notebook ${this._session.fileId}, try restart the kernel with a proper kernel and retry!`,
-      );
-    }
-    return ks;
-  }
-
-  /**
-   * Get the kernel session information
-   * @returns Kernel session model or null if no kernel session exists
-   */
-  async getKernelSession(
-    kernelName?: string,
-  ): Promise<IKernelSessionModel | null> {
-    // If kernel session is not available, try to request it
-    if (
-      !this.kernelSession ||
-      (kernelName && kernelName !== this.kernelSession.name)
-    ) {
-      this.kernelSession = await this._requestKernelSession(kernelName);
-    }
-    return this.kernelSession;
-  }
-
   async restartKernel(
     kernelName?: string,
     clear_outputs: boolean = false,
     exec: boolean = false,
   ): Promise<void> {
-    const { ServerConnection } = await import("@jupyterlab/services");
-    const { URLExt } = await import("@jupyterlab/coreutils");
-
-    const settings = ServerConnection.makeSettings({
-      baseUrl: this.baseUrl,
-    });
-
-    if (this.kernelSession) {
-      // Restart the existing kernel
-      const url = URLExt.join(
-        settings.baseUrl,
-        "api/kernels",
-        this.kernelSession.id,
-        "restart",
-      );
-
-      const init: RequestInit = {
-        method: "POST",
-      };
-
-      // Add authorization header if token is provided
-      if (this.token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${this.token}`,
-        };
+    const kernelConn = this.kernelConn;
+    if (kernelConn) {
+      if (!kernelName) {
+        // inherit old kernel name if not specified
+        kernelName = kernelConn.name;
       }
 
-      // Add cookies if available
-      if (cookieManager.hasCookies()) {
-        init.headers = {
-          ...init.headers,
-          Cookie: cookieManager.getCookieHeader(),
-        };
-      }
-
-      let response: Response;
-      response = await ServerConnection.makeRequest(url, init, settings);
-
-      if (!response.ok) {
-        const data = await response.text();
-        throw new Error(`Kernel restart failed: ${data}`);
+      // Use the kernel connection's restart method
+      try {
+        await kernelConn.restart();
+        logger.debug(
+          `Kernel <${kernelConn.name}> (${kernelConn.id}) restarted successfully`,
+        );
+      } catch (error) {
+        logger.error(
+          `Failed to restart kernel <${kernelConn.name}> (${kernelConn.id}):`,
+          error,
+        );
+        // If restart fails, dispose the connection and create a new one
+        kernelConn.dispose();
+        this.kernelConn = null;
       }
     }
-
-    this.kernelSession = await this._requestKernelSession(kernelName);
-    const kernelSessionId = this.kernelSession!.id;
 
     // Clear outputs if requested
     if (clear_outputs) {
@@ -305,83 +284,17 @@ export class NotebookSession extends DocumentSession {
       }
     }
 
+    // Get a new kernel connection (either the restarted one or a new one)
+    const newKernelConn = await this.getKernelConnection(kernelName);
+
     // Execute cells if requested
-    if (exec !== false) {
+    if (exec !== false && newKernelConn) {
       for (const cell of this.getYNotebook().cells) {
         if (cell.cell_type === "code") {
           const codeCell = cell as YCodeCell;
-          await this.executeCell(codeCell, kernelSessionId);
+          await executeJupyterCell(codeCell, newKernelConn);
         }
       }
     }
-  }
-
-  /**
-   * Execute code in the kernel session
-   * @param code Code to execute
-   * @returns Promise that resolves with execution result
-   */
-  async executeCell(cell: YCodeCell, kernelSessionId: string): Promise<void> {
-    const { ServerConnection } = await import("@jupyterlab/services");
-    const { URLExt } = await import("@jupyterlab/coreutils");
-
-    const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
-    const url = URLExt.join(
-      settings.baseUrl,
-      "api/kernels",
-      kernelSessionId,
-      "execute",
-    );
-
-    const init: RequestInit = {
-      method: "POST",
-      body: JSON.stringify({
-        code: cell.source,
-        silent: false,
-      }),
-    };
-
-    // Add authorization header if token is provided
-    if (this.token) {
-      init.headers = {
-        ...init.headers,
-        Authorization: `token ${this.token}`,
-      };
-    }
-
-    // Add cookies if available
-    if (cookieManager.hasCookies()) {
-      init.headers = {
-        ...init.headers,
-        Cookie: cookieManager.getCookieHeader(),
-      };
-    }
-
-    let response: Response;
-    response = await ServerConnection.makeRequest(url, init, settings);
-
-    // Store cookies from response
-    cookieManager.parseResponseHeaders(response.headers);
-
-    let dataText: string = await response.text();
-    let data: unknown = null;
-    if (dataText.length > 0) {
-      try {
-        data = JSON.parse(dataText);
-      } catch {
-        logger.error("Not a JSON response body.", response);
-        throw new Error("Invalid response from kernel execution");
-      }
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        `Kernel execution failed: ${data && typeof data === "object" && "message" in data ? (data as { message: string }).message : dataText}`,
-      );
-    }
-
-    // TODO: this is incorrect yet, convert the result into eligible outputs
-    const outputs: IOutput[] = [];
-    cell.setOutputs(outputs);
   }
 }

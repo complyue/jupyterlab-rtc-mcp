@@ -1,10 +1,17 @@
-import { CallToolResult } from "@modelcontextprotocol/sdk/types";
-import { ServerConnection } from "@jupyterlab/services";
+import { YCodeCell } from "@jupyter/ydoc";
 import { URLExt } from "@jupyterlab/coreutils";
-// import { DocumentSession } from "./document-session.js";
-import { NotebookSession } from "./notebook-session.js";
-import { cookieManager } from "./cookie-manager.js";
+import { IOutput } from "@jupyterlab/nbformat";
+import {
+  KernelManager,
+  KernelMessage,
+  ServerConnection,
+} from "@jupyterlab/services";
+import { IKernelConnection } from "@jupyterlab/services/lib/kernel/kernel.js";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types";
+
 import { logger } from "../utils/logger.js";
+import { cookieManager } from "./cookie-manager.js";
+import { NotebookSession } from "./notebook-session.js";
 
 export interface ISessionModel {
   format: string;
@@ -24,6 +31,8 @@ export interface ISessionModel {
  */
 export class JupyterLabAdapter {
   private baseUrl: string;
+  private _kernelManager: KernelManager;
+
   // private documentSessions: Map<string, DocumentSession>;
   private notebookSessions: Map<string, NotebookSession>;
   private token: string | undefined;
@@ -33,65 +42,21 @@ export class JupyterLabAdapter {
       baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
     this.token = token || process.env.JUPYTERLAB_TOKEN;
 
-    // this.documentSessions = new Map();
+    // Create server settings for the KernelManager
+    const serverSettings = ServerConnection.makeSettings({
+      baseUrl: this.baseUrl,
+      token: this.token,
+    });
+
+    // Initialize the KernelManager with server settings
+    this._kernelManager = new KernelManager({ serverSettings });
+
     this.notebookSessions = new Map();
   }
 
-  // /**
-  //  * Create a new document session for the given path
-  //  * @param path Path to the document
-  //  * @param type Document type (default: 'notebook')
-  //  * @returns Promise that resolves to a DocumentSession
-  //  */
-  // async createDocumentSession(
-  //   path: string,
-  //   type: string = "notebook",
-  // ): Promise<DocumentSession> {
-  //   try {
-  //     // Request a document session from JupyterLab
-  //     const session = await this.requestDocSession(path, type);
-
-  //     // Check if we already have a session for this document
-  //     if (this.documentSessions.has(session.fileId)) {
-  //       const existingSession = this.documentSessions.get(session.fileId)!;
-  //       if (!existingSession.isConnected()) {
-  //         await existingSession.connect();
-  //       }
-  //       return existingSession;
-  //     }
-
-  //     // Create a new document session
-  //     const documentSession = new DocumentSession(
-  //       session,
-  //       this.baseUrl,
-  //       this.token,
-  //     );
-
-  //     // Store the original path for later use with contents API
-  //     (
-  //       documentSession as DocumentSession & { originalPath?: string }
-  //     ).originalPath = path;
-
-  //     this.documentSessions.set(session.fileId, documentSession);
-
-  //     // Connect to the document
-  //     await documentSession.connect();
-
-  //     return documentSession;
-  //   } catch (error) {
-  //     logger.error(`Error in createDocumentSession for path ${path}: `, error);
-  //     throw error;
-  //   }
-  // }
-
-  // /**
-  //  * Get an existing document session
-  //  * @param fileId File ID of the document
-  //  * @returns DocumentSession or undefined if not found
-  //  */
-  // getDocumentSession(fileId: string): DocumentSession | undefined {
-  //   return this.documentSessions.get(fileId);
-  // }
+  get kernelManager() {
+    return this._kernelManager;
+  }
 
   /**
    * Get an existing notebook session
@@ -101,18 +66,6 @@ export class JupyterLabAdapter {
   getNotebookSession(fileId: string): NotebookSession | undefined {
     return this.notebookSessions.get(fileId);
   }
-
-  // /**
-  //  * Close a document session
-  //  * @param fileId File ID of the document
-  //  */
-  // async closeDocumentSession(fileId: string): Promise<void> {
-  //   const session = this.documentSessions.get(fileId);
-  //   if (session) {
-  //     await session.disconnect();
-  //     this.documentSessions.delete(fileId);
-  //   }
-  // }
 
   /**
    * Close a notebook session
@@ -125,17 +78,6 @@ export class JupyterLabAdapter {
       this.notebookSessions.delete(fileId);
     }
   }
-
-  // /**
-  //  * Close all document sessions
-  //  */
-  // async closeAllDocumentSessions(): Promise<void> {
-  //   const closePromises = Array.from(this.documentSessions.values()).map(
-  //     (session) => session.disconnect(),
-  //   );
-  //   await Promise.all(closePromises);
-  //   this.documentSessions.clear();
-  // }
 
   /**
    * Close all notebook sessions
@@ -170,6 +112,7 @@ export class JupyterLabAdapter {
       // Create a new notebook session
       const notebookSession = new NotebookSession(
         session,
+        this._kernelManager,
         this.baseUrl,
         this.token,
       );
@@ -568,5 +511,124 @@ export class JupyterLabAdapter {
     }
 
     return notebooks;
+  }
+}
+
+/**
+ * Execute code cell with a kernel connection, update its outputs
+ *
+ * @param cell The YCodeCell to execute
+ * @param kernelConn The kernel connection
+ * @returns Promise that resolves when execution is complete
+ */
+export async function executeJupyterCell(
+  cell: YCodeCell,
+  kernelConn: IKernelConnection,
+): Promise<void> {
+  logger.debug(`Executing cell with source: ${cell.source}`);
+
+  // Clear any existing outputs
+  cell.setOutputs([]);
+  // set it's running state
+  cell.executionState = "running";
+
+  try {
+    // Create an execute request using the kernel connection
+    const future = kernelConn.requestExecute({
+      code: cell.source,
+      silent: false,
+    });
+    // Set up handlers for IOPub messages (outputs, streams, etc.)
+    const outputs: IOutput[] = [];
+
+    future.onIOPub = (msg) => {
+      logger.debug(`Received IOPub message: ${msg.header.msg_type}`);
+
+      // Handle different types of IOPub messages
+      switch (msg.header.msg_type) {
+        case "execute_result": {
+          const executeResult =
+            msg.content as KernelMessage.IExecuteResultMsg["content"];
+          outputs.push({
+            output_type: "execute_result",
+            execution_count: executeResult.execution_count,
+            data: executeResult.data,
+            metadata: executeResult.metadata || {},
+          });
+          break;
+        }
+
+        case "stream": {
+          const stream = msg.content as KernelMessage.IStreamMsg["content"];
+          outputs.push({
+            output_type: "stream",
+            name: stream.name,
+            text: stream.text,
+          });
+          break;
+        }
+
+        case "display_data": {
+          const displayData =
+            msg.content as KernelMessage.IDisplayDataMsg["content"];
+          outputs.push({
+            output_type: "display_data",
+            data: displayData.data,
+            metadata: displayData.metadata || {},
+          });
+          break;
+        }
+
+        case "error": {
+          const error = msg.content as KernelMessage.IErrorMsg["content"];
+          outputs.push({
+            output_type: "error",
+            ename: error.ename,
+            evalue: error.evalue,
+            traceback: error.traceback,
+          });
+          break;
+        }
+
+        case "execute_input": {
+          const executeInput =
+            msg.content as KernelMessage.IExecuteInputMsg["content"];
+          // Set the execution count on the cell when execution starts
+          cell.execution_count = executeInput.execution_count;
+          break;
+        }
+
+        case "status":
+          // Status messages don't produce outputs
+          break;
+
+        default:
+          logger.debug(`Unhandled IOPub message type: ${msg.header.msg_type}`);
+      }
+
+      // Update the cell outputs with the latest outputs
+      cell.setOutputs([...outputs]);
+    };
+
+    // Wait for the execution to complete
+    await future.done;
+
+    logger.debug("Cell execution completed successfully");
+  } catch (error) {
+    logger.error("Error executing cell:", error);
+
+    // Add an error output to the cell
+    const errorOutput: IOutput = {
+      output_type: "error",
+      ename: "ExecutionError",
+      evalue: error instanceof Error ? error.message : String(error),
+      traceback: error instanceof Error ? [error.stack || ""] : [String(error)],
+    };
+
+    cell.setOutputs([errorOutput]);
+    throw error;
+  } finally {
+    // restore idle state
+    cell.executionState = "idle";
   }
 }
