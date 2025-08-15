@@ -746,4 +746,70 @@ export class NotebookTools {
       );
     }
   }
+
+  /**
+   * Execute multiple cells by specifying ranges
+   * @param path Path to the notebook file
+   * @param ranges Array of cell ranges to execute
+   * @returns MCP response indicating success
+   */
+  async executeNotebookCells(
+    path: string,
+    ranges: Array<CellRange>,
+  ): Promise<CallToolResult> {
+    try {
+      // Create or get existing notebook session
+      const nbSession = await this.jupyterAdapter.createNotebookSession(path);
+
+      // Ensure the notebook is synchronized
+      await nbSession.ensureSynchronized();
+
+      const ynb = nbSession.getYNotebook();
+      const kernelSessionId = (await nbSession.ensureKernelSession()).id;
+
+      // Extract cells based on ranges
+      const cellsToExecute: YCodeCell[] = [];
+      for (const range of ranges) {
+        const start = Math.max(0, range.start);
+        const end = Math.min(
+          ynb.cells.length,
+          range.end || ynb.cells.length,
+        );
+
+        for (let i = start; i < end; i++) {
+          const cell = ynb.getCell(i);
+          if (cell.cell_type === "code") {
+            cellsToExecute.push(cell as YCodeCell);
+          }
+        }
+      }
+
+      // Execute all cells
+      for (const cell of cellsToExecute) {
+        await nbSession.executeCell(cell, kernelSessionId);
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                message: `Successfully executed ${ranges.length} cell ranges`,
+                executed_ranges: ranges.length,
+                executed_cells: cellsToExecute.length,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to execute notebook cells:", error);
+      throw new Error(
+        `Failed to execute notebook cells: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 }

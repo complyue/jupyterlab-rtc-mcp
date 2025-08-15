@@ -121,7 +121,6 @@ export LOG_LEVEL=info
 The MCP server provides the following categories of tools:
 
 ### RTC Session Management
-- **begin_nb_session**: Begin a real-time collaboration session for a notebook
 - **end_nb_session**: End a real-time collaboration session for a notebook
 - **query_nb_sessions**: Query the status of real-time collaboration sessions for notebooks in a directory
 
@@ -132,7 +131,10 @@ The MCP server provides the following categories of tools:
 - **modify_nb_cells**: Modify multiple cells by specifying ranges, with optional execution
 - **insert_nb_cells**: Insert multiple cells at a specified location, with optional execution
 - **delete_nb_cells**: Delete multiple cells by specifying ranges
+- **execute_nb_cells**: Execute multiple cells by specifying ranges
 - **restart_nb_kernel**: Restart the kernel of a specified notebook
+- **list_available_kernels**: List all available kernels on the JupyterLab server
+- **assign_nb_kernel**: Assign a specific kernel to a notebook
 
 ### Document Management
 - **list_documents**: List available documents in JupyterLab from a specified path

@@ -207,6 +207,30 @@ Delete multiple cells by specifying ranges.
 **Returns:**
 Success message indicating the number of cells deleted.
 
+#### execute_nb_cells
+Execute multiple cells by specifying ranges.
+
+**Parameters:**
+- `path` (required): Path to the notebook file
+- `ranges` (required): Array of cell ranges to execute
+  - `start`: Starting cell index
+  - `end` (optional): Ending cell index (exclusive)
+
+**Returns:**
+Success message indicating the number of cell ranges executed.
+
+**Example:**
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Successfully executed 2 cell ranges"
+    }
+  ]
+}
+```
+
 #### restart_nb_kernel
 Restart the kernel of a specified notebook, with options to clear contents and execute cells.
 

@@ -215,6 +215,29 @@ export class JupyterLabMCPServer {
       },
     );
 
+    // Tool to execute notebook cells
+    this.server.tool(
+      "execute_nb_cells",
+      "Execute multiple cells by specifying ranges",
+      {
+        path: z.string().describe("Path to the notebook file"),
+        ranges: z
+          .array(
+            z.object({
+              start: z.number().describe("Starting cell index"),
+              end: z
+                .number()
+                .optional()
+                .describe("Ending cell index (exclusive)"),
+            }),
+          )
+          .describe("Array of cell ranges to execute"),
+      },
+      async ({ path, ranges }) => {
+        return await this.notebookTools.executeNotebookCells(path, ranges);
+      },
+    );
+
     // Tool to restart notebook kernel
     this.server.tool(
       "restart_nb_kernel",
