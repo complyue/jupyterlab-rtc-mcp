@@ -397,6 +397,7 @@ export class NotebookTools {
 
       // Execute cells if requested
       if (exec !== false) {
+        await nbSession.getKernelSession(); // ensure kernel session established
         for (const cell of cells2exec) {
           await nbSession.executeCell(cell);
         }
@@ -472,6 +473,7 @@ export class NotebookTools {
 
       // Execute cells if requested
       if (exec !== false) {
+        await nbSession.getKernelSession(); // ensure kernel session established
         for (const cell of cells2exec) {
           await nbSession.executeCell(cell);
         }
