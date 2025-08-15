@@ -136,10 +136,10 @@ export class NotebookSession extends DocumentSession {
           ...(sessionExists
             ? {}
             : {
-              path: `/notebooks/${this._session.fileId}`,
-              name: `Notebook ${this._session.fileId}`,
-              type: "notebook",
-            }),
+                path: `/notebooks/${this._session.fileId}`,
+                name: `Notebook ${this._session.fileId}`,
+                type: "notebook",
+              }),
         }),
       };
 

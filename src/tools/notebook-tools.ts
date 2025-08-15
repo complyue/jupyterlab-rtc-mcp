@@ -771,10 +771,7 @@ export class NotebookTools {
       const cellsToExecute: YCodeCell[] = [];
       for (const range of ranges) {
         const start = Math.max(0, range.start);
-        const end = Math.min(
-          ynb.cells.length,
-          range.end || ynb.cells.length,
-        );
+        const end = Math.min(ynb.cells.length, range.end || ynb.cells.length);
 
         for (let i = start; i < end; i++) {
           const cell = ynb.getCell(i);
