@@ -22,16 +22,16 @@ export class DocumentTools {
 
   /**
    * List available documents in JupyterLab
-   * @param params Parameters for listing documents
+   * @param path Path to list documents from (default: root)
    * @returns MCP response with document list
    */
-  async listDocuments(params: { path?: string }): Promise<any> {
+  async listDocuments(path?: string): Promise<any> {
     try {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const path = params.path || "";
-      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+      const documentPath = path || "";
+      const url = URLExt.join(settings.baseUrl, "/api/contents", documentPath);
 
       const init: RequestInit = {
         method: "GET",
@@ -85,65 +85,62 @@ export class DocumentTools {
 
   /**
    * Create a new document in JupyterLab
-   * @param params Parameters for creating the document
+   * @param path Path for the new document
+   * @param type Document type
+   * @param content Initial content for the document
    * @returns MCP response indicating success
    */
-  async createDocument(params: {
-    path: string;
-    type?: string;
-    content?: string;
-  }): Promise<any> {
+  async createDocument(
+    path: string,
+    type?: string,
+    content?: string,
+  ): Promise<any> {
     throw new Error("not implemented");
   }
 
   /**
    * Get document information
-   * @param params Parameters for getting document info
+   * @param path Path to the document
    * @returns MCP response with document information
    */
-  async getDocumentInfo(params: { path: string }): Promise<any> {
+  async getDocumentInfo(path: string): Promise<any> {
     throw new Error("not implemented");
   }
 
   /**
    * Delete a document
-   * @param params Parameters for deleting the document
+   * @param path Path to the document to delete
    * @returns MCP response indicating success
    */
-  async deleteDocument(params: { path: string }): Promise<any> {
+  async deleteDocument(path: string): Promise<any> {
     throw new Error("not implemented");
   }
 
   /**
    * Rename a document
-   * @param params Parameters for renaming the document
+   * @param path Current path to the document
+   * @param newPath New path for the document
    * @returns MCP response indicating success
    */
-  async renameDocument(params: {
-    path: string;
-    newPath: string;
-  }): Promise<any> {
+  async renameDocument(path: string, newPath: string): Promise<any> {
     throw new Error("not implemented");
   }
 
   /**
    * Copy a document
-   * @param params Parameters for copying the document
+   * @param path Path to the document to copy
+   * @param copyPath Path for the copied document
    * @returns MCP response indicating success
    */
-  async copyDocument(params: { path: string; copyPath: string }): Promise<any> {
+  async copyDocument(path: string, copyPath: string): Promise<any> {
     try {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const url = URLExt.join(
-        settings.baseUrl,
-        "/api/contents",
-        params.copyPath,
-      );
+      const url = URLExt.join(settings.baseUrl, "/api/contents", copyPath);
 
       const requestBody = {
-        copy_from: params.path,
+        copy_from: path,
       };
 
       const init: RequestInit = {
@@ -184,7 +181,7 @@ export class DocumentTools {
         content: [
           {
             type: "text",
-            text: `Successfully copied document from ${params.path} to ${params.copyPath}`,
+            text: `Successfully copied document from ${path} to ${copyPath}`,
           },
         ],
       };
@@ -198,13 +195,11 @@ export class DocumentTools {
 
   /**
    * Modify the content of a document
-   * @param params Parameters for modifying the document
+   * @param path Path to the document to modify
+   * @param content New content for the document
    * @returns MCP response indicating success
    */
-  async modifyDocument(params: {
-    path: string;
-    content: string;
-  }): Promise<any> {
+  async modifyDocument(path: string, content: string): Promise<any> {
     throw new Error("not implemented");
   }
 }

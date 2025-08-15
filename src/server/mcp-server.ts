@@ -61,10 +61,8 @@ export class JupyterLabMCPServer {
             "Directory path to search for notebook sessions (default: lab root directory)",
           ),
       },
-      async (args) => {
-        return await this.jupyterAdapter.queryNotebookSessions(
-          args as { root_path?: string },
-        );
+      async ({ root_path }) => {
+        return await this.jupyterAdapter.queryNotebookSessions({ root_path });
       },
     );
 
@@ -73,10 +71,8 @@ export class JupyterLabMCPServer {
       "end_nb_session",
       "End a real-time collaboration session for a notebook",
       { path: z.string().describe("Path to the notebook file") },
-      async (args) => {
-        return await this.jupyterAdapter.endNotebookSession(
-          args as { path: string },
-        );
+      async ({ path }) => {
+        return await this.jupyterAdapter.endNotebookSession({ path });
       },
     );
 
@@ -90,10 +86,8 @@ export class JupyterLabMCPServer {
           .optional()
           .describe("Directory path to search for notebooks (default: root)"),
       },
-      async (args) => {
-        return await this.notebookTools.listNotebooks(
-          args as { path?: string },
-        );
+      async ({ path }) => {
+        return await this.notebookTools.listNotebooks(path);
       },
     );
 
@@ -102,10 +96,8 @@ export class JupyterLabMCPServer {
       "get_nb_stat",
       "Get status information about a notebook",
       { path: z.string().describe("Path to the notebook file") },
-      async (args) => {
-        return await this.notebookTools.getNotebookStatus(
-          args as { path: string },
-        );
+      async ({ path }) => {
+        return await this.notebookTools.getNotebookStatus(path);
       },
     );
 
@@ -128,13 +120,8 @@ export class JupyterLabMCPServer {
           .optional()
           .describe("Array of cell ranges to read"),
       },
-      async (args) => {
-        return await this.notebookTools.readNotebookCells(
-          args as {
-            path: string;
-            ranges?: Array<{ start: number; end?: number }>;
-          },
-        );
+      async ({ path, ranges }) => {
+        return await this.notebookTools.readNotebookCells(path, ranges);
       },
     );
 
@@ -163,16 +150,11 @@ export class JupyterLabMCPServer {
           .default(true)
           .describe("Whether to execute the modified cells"),
       },
-      async (args) => {
+      async ({ path, modifications, exec }) => {
         return await this.notebookTools.modifyNotebookCells(
-          args as {
-            path: string;
-            modifications: Array<{
-              range: { start: number; end?: number };
-              content: string;
-            }>;
-            exec?: boolean;
-          },
+          path,
+          modifications,
+          exec,
         );
       },
     );
@@ -200,14 +182,12 @@ export class JupyterLabMCPServer {
           .default(true)
           .describe("Whether to execute the inserted cells"),
       },
-      async (args) => {
+      async ({ path, position, cells, exec }) => {
         return await this.notebookTools.insertNotebookCells(
-          args as {
-            path: string;
-            position: number;
-            cells: Array<{ type?: string; content: string }>;
-            exec?: boolean;
-          },
+          path,
+          position,
+          cells,
+          exec,
         );
       },
     );
@@ -230,13 +210,8 @@ export class JupyterLabMCPServer {
           )
           .describe("Array of cell ranges to delete"),
       },
-      async (args) => {
-        return await this.notebookTools.deleteNotebookCells(
-          args as {
-            path: string;
-            ranges: Array<{ start: number; end?: number }>;
-          },
-        );
+      async ({ path, ranges }) => {
+        return await this.notebookTools.deleteNotebookCells(path, ranges);
       },
     );
 
@@ -259,14 +234,12 @@ export class JupyterLabMCPServer {
           .optional()
           .describe("Name of the kernel to use (from list_available_kernels)"),
       },
-      async (args) => {
+      async ({ path, clear_outputs, exec, kernel_name }) => {
         return await this.notebookTools.restartNotebookKernel(
-          args as {
-            path: string;
-            clear_outputs?: boolean;
-            exec?: boolean;
-            kernel_name?: string;
-          },
+          path,
+          clear_outputs,
+          exec,
+          kernel_name,
         );
       },
     );
@@ -293,13 +266,8 @@ export class JupyterLabMCPServer {
             "Name of the kernel to assign (from list_available_kernels)",
           ),
       },
-      async (args) => {
-        return await this.notebookTools.assignNotebookKernel(
-          args as {
-            path: string;
-            kernel_name: string;
-          },
-        );
+      async ({ path, kernel_name }) => {
+        return await this.notebookTools.assignNotebookKernel(path, kernel_name);
       },
     );
   }
@@ -318,10 +286,8 @@ export class JupyterLabMCPServer {
           .optional()
           .describe("Path to list documents from (default: root)"),
       },
-      async (args) => {
-        return await this.documentTools.listDocuments(
-          args as { path?: string },
-        );
+      async ({ path }) => {
+        return await this.documentTools.listDocuments(path);
       },
     );
 
@@ -340,14 +306,8 @@ export class JupyterLabMCPServer {
           .optional()
           .describe("Initial content for the document"),
       },
-      async (args) => {
-        return await this.documentTools.createDocument(
-          args as {
-            path: string;
-            type?: string;
-            content?: string;
-          },
-        );
+      async ({ path, type, content }) => {
+        return await this.documentTools.createDocument(path, type, content);
       },
     );
 
@@ -356,10 +316,8 @@ export class JupyterLabMCPServer {
       "get_document_info",
       "Get information about a document",
       { path: z.string().describe("Path to the document") },
-      async (args) => {
-        return await this.documentTools.getDocumentInfo(
-          args as { path: string },
-        );
+      async ({ path }) => {
+        return await this.documentTools.getDocumentInfo(path);
       },
     );
 
@@ -368,10 +326,8 @@ export class JupyterLabMCPServer {
       "delete_document",
       "Delete a document in JupyterLab",
       { path: z.string().describe("Path to the document to delete") },
-      async (args) => {
-        return await this.documentTools.deleteDocument(
-          args as { path: string },
-        );
+      async ({ path }) => {
+        return await this.documentTools.deleteDocument(path);
       },
     );
 
@@ -383,13 +339,8 @@ export class JupyterLabMCPServer {
         path: z.string().describe("Current path to the document"),
         newPath: z.string().describe("New path for the document"),
       },
-      async (args) => {
-        return await this.documentTools.renameDocument(
-          args as {
-            path: string;
-            newPath: string;
-          },
-        );
+      async ({ path, newPath }) => {
+        return await this.documentTools.renameDocument(path, newPath);
       },
     );
 
@@ -401,13 +352,8 @@ export class JupyterLabMCPServer {
         path: z.string().describe("Path to the document to copy"),
         copyPath: z.string().describe("Path for the copied document"),
       },
-      async (args) => {
-        return await this.documentTools.copyDocument(
-          args as {
-            path: string;
-            copyPath: string;
-          },
-        );
+      async ({ path, copyPath }) => {
+        return await this.documentTools.copyDocument(path, copyPath);
       },
     );
 
@@ -419,13 +365,8 @@ export class JupyterLabMCPServer {
         path: z.string().describe("Path to the document to modify"),
         content: z.string().describe("New content for the document"),
       },
-      async (args) => {
-        return await this.documentTools.modifyDocument(
-          args as {
-            path: string;
-            content: string;
-          },
-        );
+      async ({ path, content }) => {
+        return await this.documentTools.modifyDocument(path, content);
       },
     );
   }

@@ -56,10 +56,10 @@ export class NotebookTools {
 
   /**
    * List all notebook files under specified directory, recursively
-   * @param params Parameters for listing notebooks
+   * @param path Directory path to search for notebooks (default: root)
    * @returns MCP response with notebook list
    */
-  async listNotebooks(params: { path?: string }): Promise<CallToolResult> {
+  async listNotebooks(path?: string): Promise<CallToolResult> {
     try {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
@@ -67,9 +67,9 @@ export class NotebookTools {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
-      const path = params.path || "";
+      const notebookPath = path || "";
       // Ensure proper URL construction by adding a trailing slash if path is empty
-      const contentsPath = path || "/";
+      const contentsPath = notebookPath || "/";
       const url = URLExt.join(settings.baseUrl, "/api/contents", contentsPath);
 
       const init: RequestInit = {
@@ -199,15 +199,13 @@ export class NotebookTools {
 
   /**
    * Get status information about a notebook
-   * @param params Parameters for getting notebook status
+   * @param path Path to the notebook file
    * @returns MCP response with notebook status
    */
-  async getNotebookStatus(params: { path: string }): Promise<CallToolResult> {
+  async getNotebookStatus(path: string): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const nbSession = await this.jupyterAdapter.createNotebookSession(
-        params.path,
-      );
+      const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
@@ -226,7 +224,7 @@ export class NotebookTools {
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
 
-      const url = URLExt.join(settings.baseUrl, "/api/contents", params.path);
+      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
 
       const init: RequestInit = {
         method: "GET",
@@ -271,7 +269,7 @@ export class NotebookTools {
 
       // Prepare the response
       const result: NotebookStatusResult = {
-        path: params.path,
+        path: path,
         cell_count: notebookContent.cells.length,
         last_modified: (parsedData as JupyterContent).last_modified!,
       };
@@ -302,18 +300,17 @@ export class NotebookTools {
 
   /**
    * Read multiple cells by specifying ranges
-   * @param params Parameters for reading cells
+   * @param path Path to the notebook file
+   * @param ranges Array of cell ranges to read
    * @returns MCP response with cell content
    */
-  async readNotebookCells(params: {
-    path: string;
-    ranges?: Array<CellRange>;
-  }): Promise<CallToolResult> {
+  async readNotebookCells(
+    path: string,
+    ranges?: Array<CellRange>,
+  ): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const nbSession = await this.jupyterAdapter.createNotebookSession(
-        params.path,
-      );
+      const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
@@ -322,13 +319,13 @@ export class NotebookTools {
       const notebookContent = nbSession.getYNotebook().toJSON();
 
       // If no ranges specified, return all cells
-      const ranges = params.ranges || [
+      const cellRanges = ranges || [
         { start: 0, end: notebookContent.cells.length },
       ];
 
       // Extract cells based on ranges
       const cells = [];
-      for (const range of ranges) {
+      for (const range of cellRanges) {
         const start = Math.max(0, range.start);
         const end = Math.min(
           notebookContent.cells.length,
@@ -359,19 +356,19 @@ export class NotebookTools {
 
   /**
    * Modify multiple cells by specifying ranges, execute them if not disabled
-   * @param params Parameters for modifying cells
+   * @param path Path to the notebook file
+   * @param modifications Array of cell modifications
+   * @param exec Whether to execute the modified cells
    * @returns MCP response indicating success
    */
-  async modifyNotebookCells(params: {
-    path: string;
-    modifications: Array<CellModification>;
-    exec?: boolean;
-  }): Promise<CallToolResult> {
+  async modifyNotebookCells(
+    path: string,
+    modifications: Array<CellModification>,
+    exec?: boolean,
+  ): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const nbSession = await this.jupyterAdapter.createNotebookSession(
-        params.path,
-      );
+      const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
@@ -381,7 +378,7 @@ export class NotebookTools {
 
       // Apply each modification
       ynb.transact(() => {
-        for (const modification of params.modifications) {
+        for (const modification of modifications) {
           const start = Math.max(0, modification.range.start);
           const end = Math.min(
             ynb.cells.length,
@@ -399,7 +396,7 @@ export class NotebookTools {
       });
 
       // Execute cells if requested
-      if (params.exec !== false) {
+      if (exec !== false) {
         for (const cell of cells2exec) {
           await nbSession.executeCell(cell);
         }
@@ -411,9 +408,9 @@ export class NotebookTools {
             type: "text",
             text: JSON.stringify(
               {
-                message: `Successfully modified ${params.modifications.length} cell ranges${params.exec !== false ? " and executed cells" : ""}`,
-                modified_ranges: params.modifications.length,
-                executed: params.exec !== false,
+                message: `Successfully modified ${modifications.length} cell ranges${exec !== false ? " and executed cells" : ""}`,
+                modified_ranges: modifications.length,
+                executed: exec !== false,
               },
               null,
               2,
@@ -431,20 +428,21 @@ export class NotebookTools {
 
   /**
    * Insert multiple cells at specified location, execute them if not disabled
-   * @param params Parameters for inserting cells
+   * @param path Path to the notebook file
+   * @param position Position to insert the cells
+   * @param cells Array of cells to insert
+   * @param exec Whether to execute the inserted cells
    * @returns MCP response with new cell IDs
    */
-  async insertNotebookCells(params: {
-    path: string;
-    position: number;
-    cells: Array<CellInsertion>;
-    exec?: boolean;
-  }): Promise<CallToolResult> {
+  async insertNotebookCells(
+    path: string,
+    position: number,
+    cells: Array<CellInsertion>,
+    exec?: boolean,
+  ): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const nbSession = await this.jupyterAdapter.createNotebookSession(
-        params.path,
-      );
+      const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
@@ -454,11 +452,11 @@ export class NotebookTools {
 
       ynb.transact(() => {
         // TODO: use bulk insertion api to insert cells, push resulted new code cells into cells2exec
-        ynb.insertCells(0, []);
+        ynb.insertCells(position, []);
       });
 
       // Execute cells if requested
-      if (params.exec !== false) {
+      if (exec !== false) {
         for (const cell of cells2exec) {
           await nbSession.executeCell(cell);
         }
@@ -471,7 +469,7 @@ export class NotebookTools {
             text: JSON.stringify(
               {
                 message: `Successfully inserted cells`,
-                executed: params.exec !== false,
+                executed: exec !== false,
               },
               null,
               2,
@@ -489,18 +487,17 @@ export class NotebookTools {
 
   /**
    * Delete multiple cells by specifying ranges
-   * @param params Parameters for deleting cells
+   * @param path Path to the notebook file
+   * @param ranges Array of cell ranges to delete
    * @returns MCP response indicating success
    */
-  async deleteNotebookCells(params: {
-    path: string;
-    ranges: Array<CellRange>;
-  }): Promise<CallToolResult> {
+  async deleteNotebookCells(
+    path: string,
+    ranges: Array<CellRange>,
+  ): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const nbSession = await this.jupyterAdapter.createNotebookSession(
-        params.path,
-      );
+      const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
@@ -508,7 +505,7 @@ export class NotebookTools {
       const ynb = nbSession.getYNotebook();
 
       // Process ranges in reverse order to avoid index shifting when deleting cells
-      const sortedRanges = [...params.ranges].sort((a, b) => b.start - a.start);
+      const sortedRanges = [...ranges].sort((a, b) => b.start - a.start);
 
       ynb.transact(() => {
         // TODO: the correct logic must consider overlapping of ranges, as well as index shift
@@ -544,26 +541,23 @@ export class NotebookTools {
 
   /**
    * Restart the kernel of a specified notebook
-   * @param params Parameters for restarting kernel
+   * @param path Path to the notebook file
+   * @param clear_outputs Whether to clear cell contents after restart
+   * @param exec Whether to execute cells after restart
+   * @param kernel_name Name of the kernel to use (from list_available_kernels)
    * @returns MCP response indicating success
    */
-  async restartNotebookKernel(params: {
-    path: string;
-    clear_outputs?: boolean;
-    exec?: boolean;
-    kernel_name?: string;
-  }): Promise<CallToolResult> {
+  async restartNotebookKernel(
+    path: string,
+    clear_outputs?: boolean,
+    exec?: boolean,
+    kernel_name?: string,
+  ): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const nbSession = await this.jupyterAdapter.createNotebookSession(
-        params.path,
-      );
+      const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
-      await nbSession.restartKernel(
-        params.kernel_name,
-        params.clear_outputs,
-        params.exec,
-      );
+      await nbSession.restartKernel(kernel_name, clear_outputs, exec);
 
       return {
         content: [
@@ -572,8 +566,8 @@ export class NotebookTools {
             text: JSON.stringify(
               {
                 message: `Successfully restarted notebook kernel`,
-                cleared_outputs: !!params.clear_outputs,
-                executed_cells: params.exec !== false,
+                cleared_outputs: !!clear_outputs,
+                executed_cells: exec !== false,
               },
               null,
               2,
@@ -688,20 +682,19 @@ export class NotebookTools {
 
   /**
    * Assign a specific kernel to a notebook
-   * @param params Parameters for assigning kernel
+   * @param path Path to the notebook file
+   * @param kernel_name Name of the kernel to assign (from list_available_kernels)
    * @returns MCP response indicating success
    */
-  async assignNotebookKernel(params: {
-    path: string;
-    kernel_name: string;
-  }): Promise<CallToolResult> {
+  async assignNotebookKernel(
+    path: string,
+    kernel_name: string,
+  ): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const nbSession = await this.jupyterAdapter.createNotebookSession(
-        params.path,
-      );
+      const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
-      await nbSession.getKernelSession(params.kernel_name);
+      await nbSession.getKernelSession(kernel_name);
 
       return {
         content: [
@@ -709,9 +702,9 @@ export class NotebookTools {
             type: "text",
             text: JSON.stringify(
               {
-                message: `Successfully assigned kernel '${params.kernel_name}' to notebook '${params.path}'`,
-                kernel_name: params.kernel_name,
-                notebook_path: params.path,
+                message: `Successfully assigned kernel '${kernel_name}' to notebook '${path}'`,
+                kernel_name: kernel_name,
+                notebook_path: path,
               },
               null,
               2,
