@@ -34,6 +34,7 @@ The server supports two transport modes:
 - **Cell Operations**: Read, write, and execute notebook cells
 - **Document Management**: Create, list, and manage documents
 - **Conflict Resolution**: Handle concurrent edits from multiple agents
+- **Automatic Session Timeout**: Sessions are automatically terminated after a period of inactivity to free resources
 
 ## Prerequisites
 
@@ -56,6 +57,9 @@ npx jupyterlab-rtc-mcp --transport http
 
 # Use HTTP transport on a specific port
 npx jupyterlab-rtc-mcp --transport http --port 8080
+
+# Set session timeout (in minutes)
+npx jupyterlab-rtc-mcp --session-timeout 10
 
 # Show help
 npx jupyterlab-rtc-mcp --help
@@ -123,6 +127,7 @@ The MCP server provides the following categories of tools:
 ### RTC Session Management
 - **end_nb_session**: End a real-time collaboration session for a notebook
 - **query_nb_sessions**: Query the status of real-time collaboration sessions for notebooks in a directory
+- **Automatic Timeout**: Sessions are automatically terminated after a period of inactivity (configurable via command line)
 
 ### Notebook Operations
 - **list_nbs**: List all notebook files under a specified directory
@@ -202,6 +207,10 @@ npm run build
    - Ensure the specified port is not already in use
    - Check CORS settings if accessing from a browser
    - Verify the HTTP server is running by checking the console output
+5. **Session Timeout Issues**:
+   - Sessions are automatically terminated after 5 minutes of inactivity by default
+   - Adjust the timeout using the `--session-timeout` command line argument
+   - Monitor session status using the `query_nb_sessions` tool
 
 ### Debugging with HTTP Transport
 

@@ -27,6 +27,8 @@ A JSON object with session status:
 }
 ```
 
+**Note:** Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes). This tool can be used to manually terminate a session before the timeout.
+
 #### query_nb_sessions
 Query the status of real-time collaboration sessions for notebooks in a directory.
 
@@ -75,6 +77,8 @@ A JSON object with session status information:
   "active_sessions": 1
 }
 ```
+
+**Note:** Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes). The `last_activity` timestamp shows when the session was last accessed.
 
 ### Notebook Operations
 
@@ -495,11 +499,29 @@ Success message indicating the document was modified.
 
 ### Session Management
 
-The JupyterLab RTC MCP Server uses an implicit session management approach:
+The JupyterLab RTC MCP Server uses an implicit session management approach with automatic timeout:
 
 - **On-demand Session Creation**: Notebook and document sessions are created automatically when needed, without requiring explicit session initiation.
-- **Explicit Session Termination**: Sessions must be explicitly closed using the `end_nb_session` tool to free resources.
+- **Automatic Session Termination**: Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes).
+- **Explicit Session Termination**: Sessions can be explicitly closed using the `end_nb_session` tool to free resources before the timeout.
+- **Activity Tracking**: The server tracks activity on sessions and resets the timeout timer whenever an operation is performed on a notebook.
 - **Session Tracking**: The server maintains active sessions in memory and provides tools to query their status.
+
+### Session Timeout Configuration
+
+The session timeout can be configured using the `--session-timeout` command line argument:
+
+```bash
+# Set session timeout to 10 minutes
+npx jupyterlab-rtc-mcp --session-timeout 10
+
+# Set session timeout to 1 minute
+npx jupyterlab-rtc-mcp --session-timeout 1
+```
+
+The timeout value is specified in minutes. If not provided, the default timeout is 5 minutes.
+
+When a session times out, it is automatically terminated and resources are freed. Any subsequent operations on the notebook will create a new session.
 
 ### Real-time Collaboration Infrastructure
 

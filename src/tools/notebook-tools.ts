@@ -211,6 +211,9 @@ export class NotebookTools {
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
 
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(nbSession.session.fileId);
+
       // Get notebook content
       const notebookContent = nbSession.getYNotebook().toJSON();
 
@@ -314,6 +317,9 @@ export class NotebookTools {
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
 
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(nbSession.session.fileId);
+
       // Get notebook content
       const notebookContent = nbSession.getYNotebook().toJSON();
 
@@ -371,6 +377,9 @@ export class NotebookTools {
 
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
+
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(nbSession.session.fileId);
 
       const ynb = nbSession.getYNotebook();
       const cells2exec: YCodeCell[] = [];
@@ -453,6 +462,9 @@ export class NotebookTools {
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
 
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(nbSession.session.fileId);
+
       const ynb = nbSession.getYNotebook();
       const cells2exec: YCodeCell[] = [];
 
@@ -518,6 +530,9 @@ export class NotebookTools {
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
 
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(nbSession.session.fileId);
+
       const ynb = nbSession.getYNotebook();
 
       // Process ranges in reverse order to avoid index shifting when deleting cells
@@ -582,6 +597,9 @@ export class NotebookTools {
     try {
       // Create or get existing notebook session
       const nbSession = await this.jupyterAdapter.createNotebookSession(path);
+
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(nbSession.session.fileId);
 
       await nbSession.restartKernel(kernel_name, clear_outputs, exec);
 
@@ -720,6 +738,9 @@ export class NotebookTools {
       // Create or get existing notebook session
       const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(nbSession.session.fileId);
+
       // Get kernel connection with the specified kernel name
       const kernelConn = await nbSession.getKernelConnection(kernel_name);
       if (!kernelConn) {
@@ -802,6 +823,9 @@ export class NotebookTools {
 
       // Ensure the notebook is synchronized
       await nbSession.ensureSynchronized();
+
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(nbSession.session.fileId);
 
       const ynb = nbSession.getYNotebook();
       const kernelConn = await nbSession.ensureKernelConnection();

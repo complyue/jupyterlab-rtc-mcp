@@ -36,11 +36,15 @@ export class JupyterLabAdapter {
   // private documentSessions: Map<string, DocumentSession>;
   private notebookSessions: Map<string, NotebookSession>;
   private token: string | undefined;
+  private sessionTimeout: number;
+  private sessionTimeoutTimers: Map<string, ReturnType<typeof setTimeout>>;
 
-  constructor(baseUrl?: string, token?: string) {
+  constructor(sessionTimeout?: number, baseUrl?: string, token?: string) {
     this.baseUrl =
       baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
     this.token = token || process.env.JUPYTERLAB_TOKEN;
+    this.sessionTimeout = sessionTimeout || 5 * 60 * 1000; // Default to 5 minutes
+    this.sessionTimeoutTimers = new Map();
 
     // Create server settings for the KernelManager
     const serverSettings = ServerConnection.makeSettings({
@@ -74,6 +78,9 @@ export class JupyterLabAdapter {
   async closeNotebookSession(fileId: string): Promise<void> {
     const session = this.notebookSessions.get(fileId);
     if (session) {
+      // Clear any existing timeout timer
+      this.clearSessionTimeout(fileId);
+
       await session.disconnect();
       this.notebookSessions.delete(fileId);
     }
@@ -83,6 +90,11 @@ export class JupyterLabAdapter {
    * Close all notebook sessions
    */
   async closeAllNotebookSessions(): Promise<void> {
+    // Clear all timeout timers
+    for (const fileId of this.sessionTimeoutTimers.keys()) {
+      this.clearSessionTimeout(fileId);
+    }
+
     const closePromises = Array.from(this.notebookSessions.values()).map(
       (session) => session.disconnect(),
     );
@@ -127,6 +139,9 @@ export class JupyterLabAdapter {
       // Connect to the notebook
       await notebookSession.connect();
 
+      // Set up session timeout
+      this.setupSessionTimeout(session.fileId);
+
       return notebookSession;
     } catch (error) {
       logger.error(`Error in createNotebookSession for path ${path}`, error);
@@ -156,6 +171,9 @@ export class JupyterLabAdapter {
     }
 
     if (sessionToClose) {
+      // Clear any existing timeout timer
+      this.clearSessionTimeout(sessionFileId!);
+
       await sessionToClose.disconnect();
       this.notebookSessions.delete(sessionFileId!);
 
@@ -456,7 +474,7 @@ export class JupyterLabAdapter {
    */
   private _extractNotebooks(contents: {
     type: string;
-    content?: any[];
+    content?: unknown[];
     path?: string;
     name?: string;
     last_modified?: string;
@@ -484,16 +502,27 @@ export class JupyterLabAdapter {
       // Recursively process directory contents
       if (contents.content) {
         for (const item of contents.content) {
-          if (item.type === "directory") {
-            notebooks.push(...this._extractNotebooks(item));
-          } else if (item.type === "notebook") {
+          const typedItem = item as {
+            type: string;
+            content?: unknown[];
+            path?: string;
+            name?: string;
+            last_modified?: string;
+            created?: string;
+            size?: number;
+            writable?: boolean;
+          };
+
+          if (typedItem.type === "directory") {
+            notebooks.push(...this._extractNotebooks(typedItem));
+          } else if (typedItem.type === "notebook") {
             notebooks.push({
-              path: item.path,
-              name: item.name,
-              last_modified: item.last_modified,
-              created: item.created,
-              size: item.size,
-              writable: item.writable,
+              path: typedItem.path || "",
+              name: typedItem.name || "",
+              last_modified: typedItem.last_modified,
+              created: typedItem.created,
+              size: typedItem.size,
+              writable: typedItem.writable,
             });
           }
         }
@@ -511,6 +540,47 @@ export class JupyterLabAdapter {
     }
 
     return notebooks;
+  }
+
+  /**
+   * Set up a timeout for a session to automatically close after inactivity
+   * @param fileId File ID of the notebook
+   */
+  private setupSessionTimeout(fileId: string): void {
+    // Clear any existing timeout timer
+    this.clearSessionTimeout(fileId);
+
+    // Set up new timeout timer
+    const timer = setTimeout(async () => {
+      logger.info(
+        `Session timeout reached for notebook ${fileId}, closing session...`,
+      );
+      await this.closeNotebookSession(fileId);
+    }, this.sessionTimeout);
+
+    this.sessionTimeoutTimers.set(fileId, timer);
+  }
+
+  /**
+   * Clear the timeout timer for a session
+   * @param fileId File ID of the notebook
+   */
+  private clearSessionTimeout(fileId: string): void {
+    const timer = this.sessionTimeoutTimers.get(fileId);
+    if (timer) {
+      clearTimeout(timer);
+      this.sessionTimeoutTimers.delete(fileId);
+    }
+  }
+
+  /**
+   * Update the activity timestamp for a session and reset the timeout
+   * @param fileId File ID of the notebook
+   */
+  public updateSessionActivity(fileId: string): void {
+    if (this.notebookSessions.has(fileId)) {
+      this.setupSessionTimeout(fileId);
+    }
   }
 }
 

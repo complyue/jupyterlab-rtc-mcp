@@ -16,12 +16,14 @@ import { logger } from "./utils/logger.js";
 interface ServerConfig {
   transport: 'stdio' | 'http';
   httpPort?: number;
+  sessionTimeout?: number;
 }
 
 function parseCommandLineArgs(): ServerConfig {
   const args = process.argv.slice(2);
   const config: ServerConfig = {
-    transport: 'stdio' // Default to stdio transport
+    transport: 'stdio', // Default to stdio transport
+    sessionTimeout: 5 * 60 * 1000 // Default to 5 minutes in milliseconds
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -43,6 +45,14 @@ function parseCommandLineArgs(): ServerConfig {
         process.exit(1);
       }
       i++; // Skip next argument
+    } else if (arg === '--session-timeout') {
+      const timeoutMinutes = parseInt(args[i + 1], 10);
+      if (isNaN(timeoutMinutes) || timeoutMinutes < 1) {
+        logger.error(`Invalid session timeout: ${args[i + 1]}. Must be a positive number of minutes`);
+        process.exit(1);
+      }
+      config.sessionTimeout = timeoutMinutes * 60 * 1000; // Convert minutes to milliseconds
+      i++; // Skip next argument
     }
   }
 
@@ -54,7 +64,7 @@ async function main() {
   const config = parseCommandLineArgs();
 
   // Create MCP server
-  const server = new JupyterLabMCPServer();
+  const server = new JupyterLabMCPServer(config.sessionTimeout);
 
   // Start server with appropriate transport
   try {

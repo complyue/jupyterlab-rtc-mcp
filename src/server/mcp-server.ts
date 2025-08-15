@@ -17,12 +17,12 @@ export class JupyterLabMCPServer {
   private notebookTools: NotebookTools;
   private documentTools: DocumentTools;
 
-  constructor(serverInfo?: { name: string; version: string }) {
+  constructor(sessionTimeout?: number, name?: string, version?: string) {
     // Create MCP server using the idiomatic McpServer class
     this.server = new McpServer(
       {
-        name: serverInfo?.name || "jupyterlab-rtc-mcp",
-        version: serverInfo?.version || "0.1.0",
+        name: name || "jupyterlab-rtc-mcp",
+        version: version || "0.1.0",
       },
       {
         capabilities: {
@@ -32,7 +32,7 @@ export class JupyterLabMCPServer {
     );
 
     // Initialize JupyterLab adapter
-    this.jupyterAdapter = new JupyterLabAdapter();
+    this.jupyterAdapter = new JupyterLabAdapter(sessionTimeout);
 
     // Initialize tools
     this.notebookTools = new NotebookTools(this.jupyterAdapter);

@@ -1,13 +1,11 @@
 import { WebsocketProvider } from "y-websocket";
 import { cookieManager } from "./cookie-manager.js";
-import { logger } from "../utils/logger.js";
 
 import WebSocket from "ws";
 
 class CookieWS extends WebSocket {
   constructor(url: string | URL, options?: WebSocket.ClientOptions) {
     const cookieHeader = cookieManager.getCookieHeader();
-    // logger.debug(`WS using cookie:\n  ${cookieHeader}`);
     super(url, {
       ...options,
       headers: {
@@ -24,10 +22,10 @@ export class CookieWebsocketProvider extends WebsocketProvider {
   constructor(
     serverUrl: string,
     roomname: string,
-    doc: any,
+    doc: unknown,
     opts: {
       connect?: boolean;
-      awareness?: any;
+      awareness?: unknown;
       params?: Record<string, string>;
       protocols?: string[];
       resyncInterval?: number;
@@ -35,8 +33,8 @@ export class CookieWebsocketProvider extends WebsocketProvider {
       disableBc?: boolean;
     } = {},
   ) {
-    super(serverUrl, roomname, doc, {
-      ...opts,
+    super(serverUrl, roomname, doc as any, {
+      ...(opts as any),
       WebSocketPolyfill: CookieWS as any,
     });
   }

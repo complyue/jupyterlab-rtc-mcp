@@ -1,7 +1,6 @@
 import { URLExt } from "@jupyterlab/coreutils";
 import { PromiseDelegate } from "@lumino/coreutils";
 import * as Y from "yjs";
-import { cookieManager } from "./cookie-manager.js";
 import { CookieWebsocketProvider } from "./websocket-provider.js";
 import { logger } from "../utils/logger.js";
 
