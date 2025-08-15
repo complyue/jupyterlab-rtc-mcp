@@ -397,9 +397,9 @@ export class NotebookTools {
 
       // Execute cells if requested
       if (exec !== false) {
-        await nbSession.getKernelSession(); // ensure kernel session established
+        const kernelSessionId = (await nbSession.ensureKernelSession()).id;
         for (const cell of cells2exec) {
-          await nbSession.executeCell(cell);
+          await nbSession.executeCell(cell, kernelSessionId);
         }
       }
 
@@ -473,9 +473,9 @@ export class NotebookTools {
 
       // Execute cells if requested
       if (exec !== false) {
-        await nbSession.getKernelSession(); // ensure kernel session established
+        const kernelSessionId = (await nbSession.ensureKernelSession()).id;
         for (const cell of cells2exec) {
-          await nbSession.executeCell(cell);
+          await nbSession.executeCell(cell, kernelSessionId);
         }
       }
 

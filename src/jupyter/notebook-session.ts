@@ -150,6 +150,16 @@ export class NotebookSession extends DocumentSession {
     }
   }
 
+  async ensureKernelSession(
+    kernelName?: string,
+  ): Promise<IKernelSessionModel> {
+    const ks = await this.getKernelSession(kernelName);
+    if (!ks) {
+      throw new Error(`No kernel session with <${kernelName || "default"}> kernel established for notebook ${this._session.fileId}, try restart the kernel with a proper kernel and retry!`);
+    }
+    return ks;
+  }
+
   /**
    * Get the kernel session information
    * @returns Kernel session model or null if no kernel session exists
@@ -246,7 +256,7 @@ export class NotebookSession extends DocumentSession {
    * @param code Code to execute
    * @returns Promise that resolves with execution result
    */
-  async executeCell(cell: YCodeCell, kernelSessionId?: string): Promise<void> {
+  async executeCell(cell: YCodeCell, kernelSessionId: string): Promise<void> {
     const { ServerConnection } = await import("@jupyterlab/services");
     const { URLExt } = await import("@jupyterlab/coreutils");
 
@@ -254,7 +264,7 @@ export class NotebookSession extends DocumentSession {
     const url = URLExt.join(
       settings.baseUrl,
       "api/kernels",
-      kernelSessionId || this.kernelSession!.id,
+      kernelSessionId,
       "execute",
     );
 
@@ -290,7 +300,6 @@ export class NotebookSession extends DocumentSession {
 
     let dataText: string = await response.text();
     let data: unknown = null;
-
     if (dataText.length > 0) {
       try {
         data = JSON.parse(dataText);
