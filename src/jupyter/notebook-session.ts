@@ -1,6 +1,6 @@
 import * as Y from "yjs";
 import { YCodeCell, YNotebook } from "@jupyter/ydoc";
-import { IOutput, MultilineString } from "@jupyterlab/nbformat";
+import { IOutput } from "@jupyterlab/nbformat";
 import { cookieManager } from "./cookie-manager.js";
 import { logger } from "../utils/logger.js";
 import { DocumentSession, ISessionModel } from "./document-session.js";
@@ -78,18 +78,68 @@ export class NotebookSession extends DocumentSession {
       const { URLExt } = await import("@jupyterlab/coreutils");
 
       const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
-      const url = URLExt.join(
+
+      // First, try to get the existing session to see if it already exists
+      const getSessionUrl = URLExt.join(
         settings.baseUrl,
         "api/sessions",
         this._session.sessionId,
       );
 
+      const getInit: RequestInit = {
+        method: "GET",
+      };
+
+      // Add authorization header if token is provided
+      if (this.token) {
+        getInit.headers = {
+          ...getInit.headers,
+          Authorization: `token ${this.token}`,
+        };
+      }
+
+      // Add cookies if available
+      if (cookieManager.hasCookies()) {
+        getInit.headers = {
+          ...getInit.headers,
+          Cookie: cookieManager.getCookieHeader(),
+        };
+      }
+
+      let sessionExists = false;
+      try {
+        const getResponse = await ServerConnection.makeRequest(
+          getSessionUrl,
+          getInit,
+          settings,
+        );
+        sessionExists = getResponse.ok;
+        // Store cookies from response
+        cookieManager.parseResponseHeaders(getResponse.headers);
+      } catch (error) {
+        // Session doesn't exist or other error
+        logger.debug(
+          `Session check failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
       const kernelSpec = kernelName ? { name: kernelName } : {};
+      const url = sessionExists
+        ? getSessionUrl
+        : URLExt.join(settings.baseUrl, "api/sessions");
 
       const init: RequestInit = {
-        method: "POST",
+        method: sessionExists ? "PATCH" : "POST",
         body: JSON.stringify({
           kernel: kernelSpec,
+          // For new sessions, we need to include the path and other required fields
+          ...(sessionExists
+            ? {}
+            : {
+              path: `/notebooks/${this._session.fileId}`,
+              name: `Notebook ${this._session.fileId}`,
+              type: "notebook",
+            }),
         }),
       };
 
@@ -143,6 +193,21 @@ export class NotebookSession extends DocumentSession {
         };
       }
 
+      // If this is a new session creation, the response might have a different structure
+      if (
+        data &&
+        typeof data === "object" &&
+        "id" in data &&
+        "kernel" in data &&
+        data.kernel
+      ) {
+        const kernel = data.kernel as { id: string; name: string };
+        return {
+          id: kernel.id,
+          name: kernel.name,
+        };
+      }
+
       return null;
     } catch (error) {
       logger.error(`Error requesting kernel session:`, error);
@@ -150,12 +215,12 @@ export class NotebookSession extends DocumentSession {
     }
   }
 
-  async ensureKernelSession(
-    kernelName?: string,
-  ): Promise<IKernelSessionModel> {
+  async ensureKernelSession(kernelName?: string): Promise<IKernelSessionModel> {
     const ks = await this.getKernelSession(kernelName);
     if (!ks) {
-      throw new Error(`No kernel session with <${kernelName || "default"}> kernel established for notebook ${this._session.fileId}, try restart the kernel with a proper kernel and retry!`);
+      throw new Error(
+        `No kernel session with <${kernelName || "default"}> kernel established for notebook ${this._session.fileId}, try restart the kernel with a proper kernel and retry!`,
+      );
     }
     return ks;
   }
