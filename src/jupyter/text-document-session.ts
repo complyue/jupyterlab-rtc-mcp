@@ -11,17 +11,13 @@ import { DocumentSession } from "./document-session.js";
 export class TextDocumentSession extends DocumentSession {
   private yText: Y.Text;
 
-  constructor(
-    session: ISessionModel,
-    baseUrl: string,
-    token?: string,
-  ) {
+  constructor(session: ISessionModel, baseUrl: string, token?: string) {
     // Create a Y.Doc for the text document
     const ydoc = new Y.Doc();
     super(session, baseUrl, token, ydoc);
-    
+
     // Get or create the shared text object
-    this.yText = ydoc.getText('content');
+    this.yText = ydoc.getText("content");
   }
 
   /**

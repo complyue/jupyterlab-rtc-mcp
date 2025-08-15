@@ -497,7 +497,10 @@ export class DocumentTools {
    * @param content New content for the document
    * @returns MCP response indicating success
    */
-  async overwriteDocument(path: string, content: string): Promise<CallToolResult> {
+  async overwriteDocument(
+    path: string,
+    content: string,
+  ): Promise<CallToolResult> {
     try {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
@@ -616,7 +619,9 @@ export class DocumentTools {
     try {
       // Check if this is a notebook file (.ipynb)
       if (path.toLowerCase().endsWith(".ipynb")) {
-        throw new Error("Cannot insert text into notebook files. Use notebook tools instead.");
+        throw new Error(
+          "Cannot insert text into notebook files. Use notebook tools instead.",
+        );
       }
 
       // For text files, use RTC
@@ -662,7 +667,9 @@ export class DocumentTools {
     try {
       // Check if this is a notebook file (.ipynb)
       if (path.toLowerCase().endsWith(".ipynb")) {
-        throw new Error("Cannot delete text from notebook files. Use notebook tools instead.");
+        throw new Error(
+          "Cannot delete text from notebook files. Use notebook tools instead.",
+        );
       }
 
       // For text files, use RTC
@@ -710,7 +717,9 @@ export class DocumentTools {
     try {
       // Check if this is a notebook file (.ipynb)
       if (path.toLowerCase().endsWith(".ipynb")) {
-        throw new Error("Cannot replace text in notebook files. Use notebook tools instead.");
+        throw new Error(
+          "Cannot replace text in notebook files. Use notebook tools instead.",
+        );
       }
 
       // For text files, use RTC
@@ -754,7 +763,9 @@ export class DocumentTools {
     try {
       // Check if this is a notebook file (.ipynb)
       if (path.toLowerCase().endsWith(".ipynb")) {
-        throw new Error("Cannot get content from notebook files using this method. Use notebook tools instead.");
+        throw new Error(
+          "Cannot get content from notebook files using this method. Use notebook tools instead.",
+        );
       }
 
       // For text files, use RTC
