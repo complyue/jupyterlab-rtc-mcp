@@ -2,6 +2,7 @@ import { JupyterLabAdapter } from "../jupyter/adapter.js";
 import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
 import { logger } from "../utils/logger.js";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * DocumentTools provides high-level operations for document management
@@ -25,7 +26,7 @@ export class DocumentTools {
    * @param path Path to list documents from (default: root)
    * @returns MCP response with document list
    */
-  async listDocuments(path?: string): Promise<any> {
+  async listDocuments(path?: string): Promise<CallToolResult> {
     try {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
@@ -57,15 +58,25 @@ export class DocumentTools {
       const data = await response.json();
 
       // Format the response to include only relevant information
-      const documents = data.content.map((item: any) => ({
-        name: item.name,
-        path: item.path,
-        type: item.type,
-        created: item.created,
-        last_modified: item.last_modified,
-        size: item.size,
-        writable: item.writable,
-      }));
+      const documents = data.content.map(
+        (item: {
+          name: string;
+          path: string;
+          type: string;
+          created: string;
+          last_modified: string;
+          size: number;
+          writable: boolean;
+        }) => ({
+          name: item.name,
+          path: item.path,
+          type: item.type,
+          created: item.created,
+          last_modified: item.last_modified,
+          size: item.size,
+          writable: item.writable,
+        }),
+      );
 
       return {
         content: [
@@ -94,17 +105,193 @@ export class DocumentTools {
     path: string,
     type?: string,
     content?: string,
-  ): Promise<any> {
-    throw new Error("not implemented");
+  ): Promise<CallToolResult> {
+    try {
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
+      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+
+      // Default to 'file' type if not specified
+      const documentType = type || "file";
+
+      const requestBody: {
+        type: string;
+        content?: string;
+        format?: string;
+      } = {
+        type: documentType,
+      };
+
+      // Add content if provided
+      if (content !== undefined) {
+        requestBody.content = content;
+        // For files, we need to specify the format
+        if (documentType === "file") {
+          requestBody.format = "text";
+        }
+      }
+
+      const init: RequestInit = {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      };
+
+      // Add authorization header if token is provided
+      const token = process.env.JUPYTERLAB_TOKEN;
+      if (token) {
+        init.headers = {
+          ...init.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      const response = await ServerConnection.makeRequest(url, init, settings);
+
+      if (!response.ok) {
+        // Try to get more error details from the response body
+        let errorDetails = "";
+        try {
+          const errorResponse = await response.text();
+          errorDetails = ` - Response body: ${errorResponse}`;
+        } catch {
+          errorDetails = " - Could not read response body";
+        }
+
+        throw new Error(
+          `Server returned ${response.status}: ${response.statusText}${errorDetails}`,
+        );
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully created document at ${path}`,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to create document:", error);
+      throw new Error(
+        `Failed to create document: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**
    * Get document information
    * @param path Path to the document
+   * @param includeContent Whether to include document content (default: false)
+   * @param maxContent Maximum content length to return (default: 32768)
    * @returns MCP response with document information
    */
-  async getDocumentInfo(path: string): Promise<any> {
-    throw new Error("not implemented");
+  async getDocumentInfo(
+    path: string,
+    includeContent: boolean = false,
+    maxContent: number = 32768,
+  ): Promise<CallToolResult> {
+    try {
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
+      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+
+      const init: RequestInit = {
+        method: "GET",
+      };
+
+      // Add authorization header if token is provided
+      const token = process.env.JUPYTERLAB_TOKEN;
+      if (token) {
+        init.headers = {
+          ...init.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      const response = await ServerConnection.makeRequest(url, init, settings);
+
+      if (!response.ok) {
+        // Try to get more error details from the response body
+        let errorDetails = "";
+        try {
+          const errorResponse = await response.text();
+          errorDetails = ` - Response body: ${errorResponse}`;
+        } catch {
+          errorDetails = " - Could not read response body";
+        }
+
+        throw new Error(
+          `Server returned ${response.status}: ${response.statusText}${errorDetails}`,
+        );
+      }
+
+      const data = await response.json();
+
+      // Format the response to include only relevant information
+      const documentInfo = {
+        name: data.name,
+        path: data.path,
+        type: data.type,
+        created: data.created,
+        last_modified: data.last_modified,
+        size: data.size,
+        writable: data.writable,
+        mimetype: data.mimetype,
+        format: data.format,
+      };
+
+      // Build the content array with proper typing
+      const resultContent: CallToolResult["content"] = [
+        {
+          type: "text" as const,
+          text: JSON.stringify(documentInfo, null, 2),
+        },
+      ];
+
+      // Process content only if requested
+      if (includeContent && typeof data.content === "string") {
+        let content = data.content;
+        const contentLength = content.length;
+        const contentInfo: {
+          content_length: number;
+          truncated?: boolean;
+        } = {
+          content_length: contentLength,
+        };
+
+        // Truncate content if it exceeds maxContent
+        if (contentLength > maxContent) {
+          const suffix = "\n\n...[CONTENT TRUNCATED]";
+          content = content.substring(0, maxContent - suffix.length) + suffix;
+          contentInfo.truncated = true;
+        } else {
+          contentInfo.truncated = false;
+        }
+
+        resultContent.push({
+          type: "text" as const,
+          text: JSON.stringify(contentInfo, null, 2),
+        });
+        resultContent.push({
+          type: "text" as const,
+          text: content,
+        });
+      }
+
+      return {
+        content: resultContent,
+      };
+    } catch (error) {
+      logger.error("Failed to get document info:", error);
+      throw new Error(
+        `Failed to get document info: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**
@@ -112,8 +299,57 @@ export class DocumentTools {
    * @param path Path to the document to delete
    * @returns MCP response indicating success
    */
-  async deleteDocument(path: string): Promise<any> {
-    throw new Error("not implemented");
+  async deleteDocument(path: string): Promise<CallToolResult> {
+    try {
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
+      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+
+      const init: RequestInit = {
+        method: "DELETE",
+      };
+
+      // Add authorization header if token is provided
+      const token = process.env.JUPYTERLAB_TOKEN;
+      if (token) {
+        init.headers = {
+          ...init.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      const response = await ServerConnection.makeRequest(url, init, settings);
+
+      if (!response.ok) {
+        // Try to get more error details from the response body
+        let errorDetails = "";
+        try {
+          const errorResponse = await response.text();
+          errorDetails = ` - Response body: ${errorResponse}`;
+        } catch {
+          errorDetails = " - Could not read response body";
+        }
+
+        throw new Error(
+          `Server returned ${response.status}: ${response.statusText}${errorDetails}`,
+        );
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully deleted document at ${path}`,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to delete document:", error);
+      throw new Error(
+        `Failed to delete document: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**
@@ -122,8 +358,65 @@ export class DocumentTools {
    * @param newPath New path for the document
    * @returns MCP response indicating success
    */
-  async renameDocument(path: string, newPath: string): Promise<any> {
-    throw new Error("not implemented");
+  async renameDocument(path: string, newPath: string): Promise<CallToolResult> {
+    try {
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
+      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+
+      const requestBody = {
+        path: newPath,
+      };
+
+      const init: RequestInit = {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      };
+
+      // Add authorization header if token is provided
+      const token = process.env.JUPYTERLAB_TOKEN;
+      if (token) {
+        init.headers = {
+          ...init.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      const response = await ServerConnection.makeRequest(url, init, settings);
+
+      if (!response.ok) {
+        // Try to get more error details from the response body
+        let errorDetails = "";
+        try {
+          const errorResponse = await response.text();
+          errorDetails = ` - Response body: ${errorResponse}`;
+        } catch {
+          errorDetails = " - Could not read response body";
+        }
+
+        throw new Error(
+          `Server returned ${response.status}: ${response.statusText}${errorDetails}`,
+        );
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully renamed document from ${path} to ${newPath}`,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to rename document:", error);
+      throw new Error(
+        `Failed to rename document: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**
@@ -132,7 +425,7 @@ export class DocumentTools {
    * @param copyPath Path for the copied document
    * @returns MCP response indicating success
    */
-  async copyDocument(path: string, copyPath: string): Promise<any> {
+  async copyDocument(path: string, copyPath: string): Promise<CallToolResult> {
     try {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
@@ -199,7 +492,107 @@ export class DocumentTools {
    * @param content New content for the document
    * @returns MCP response indicating success
    */
-  async modifyDocument(path: string, content: string): Promise<any> {
-    throw new Error("not implemented");
+  async modifyDocument(path: string, content: string): Promise<CallToolResult> {
+    try {
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
+      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+
+      // First, get the current document info to determine its type
+      const getInfoInit: RequestInit = {
+        method: "GET",
+      };
+
+      // Add authorization header if token is provided
+      const token = process.env.JUPYTERLAB_TOKEN;
+      if (token) {
+        getInfoInit.headers = {
+          ...getInfoInit.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      const infoResponse = await ServerConnection.makeRequest(
+        url,
+        getInfoInit,
+        settings,
+      );
+
+      if (!infoResponse.ok) {
+        throw new Error(
+          `Failed to get document info: ${infoResponse.status} ${infoResponse.statusText}`,
+        );
+      }
+
+      const docInfo = await infoResponse.json();
+
+      // Prepare the request body with the new content
+      const requestBody: {
+        content: string | object;
+        format: string;
+      } = {
+        content: content,
+        format: "text", // Assume text format for simplicity
+      };
+
+      // For notebooks, we need to handle the content differently
+      if (docInfo.type === "notebook") {
+        // If it's a notebook, parse the content as JSON
+        try {
+          requestBody.content = JSON.parse(content);
+          requestBody.format = "json";
+        } catch {
+          throw new Error("Invalid JSON content for notebook");
+        }
+      }
+
+      const init: RequestInit = {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      };
+
+      // Add authorization header if token is provided
+      if (token) {
+        init.headers = {
+          ...init.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      const response = await ServerConnection.makeRequest(url, init, settings);
+
+      if (!response.ok) {
+        // Try to get more error details from the response body
+        let errorDetails = "";
+        try {
+          const errorResponse = await response.text();
+          errorDetails = ` - Response body: ${errorResponse}`;
+        } catch {
+          errorDetails = " - Could not read response body";
+        }
+
+        throw new Error(
+          `Server returned ${response.status}: ${response.statusText}${errorDetails}`,
+        );
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully modified document at ${path}`,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to modify document:", error);
+      throw new Error(
+        `Failed to modify document: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }

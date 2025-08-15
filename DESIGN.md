@@ -361,21 +361,30 @@ Get information about a document.
 
 **Parameters:**
 - `path` (required): Path to the document
+- `include_content` (optional, default: false): Whether to include document content
+- `max_content` (optional, default: 32768): Maximum content length to return (default: 32KB)
 
 **Returns:**
-A JSON object with document information:
-- `name`: Document name
-- `path`: Full path to the document
-- `type`: Document type
-- `format`: Document format
-- `created`: ISO timestamp of creation
-- `last_modified`: ISO timestamp of last modification
-- `size`: File size in bytes
-- `writable`: Whether the document is writable
-- `mimetype`: MIME type of the document
-- `content`: Document content
+A multi-message response with document information:
 
-**Example:**
+1. **First message**: Document information as JSON
+   - `name`: Document name
+   - `path`: Full path to the document
+   - `type`: Document type
+   - `format`: Document format
+   - `created`: ISO timestamp of creation
+   - `last_modified`: ISO timestamp of last modification
+   - `size`: File size in bytes
+   - `writable`: Whether the document is writable
+   - `mimetype`: MIME type of the document
+
+2. **Second message** (if include_content is true): Content information as JSON
+   - `content_length`: Length of the content
+   - `truncated`: Boolean indicating if content was truncated
+
+3. **Third message** (if include_content is true): The actual document content
+
+**Example** (without content):
 ```json
 {
   "name": "document.md",
@@ -384,11 +393,39 @@ A JSON object with document information:
   "format": "text",
   "created": "2023-01-01T10:00:00Z",
   "last_modified": "2023-01-01T12:00:00Z",
-  "size": 1024,
+  "size": 17,
   "writable": true,
-  "mimetype": "text/markdown",
-  "content": "# Document Content"
+  "mimetype": "text/markdown"
 }
+```
+
+**Example** (with content):
+Message 1:
+```json
+{
+  "name": "document.md",
+  "path": "/example/document.md",
+  "type": "file",
+  "format": "text",
+  "created": "2023-01-01T10:00:00Z",
+  "last_modified": "2023-01-01T12:00:00Z",
+  "size": 17,
+  "writable": true,
+  "mimetype": "text/markdown"
+}
+```
+
+Message 2:
+```json
+{
+  "content_length": 17,
+  "truncated": false
+}
+```
+
+Message 3:
+```markdown
+# Document Content
 ```
 
 #### delete_document

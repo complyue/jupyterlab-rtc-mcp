@@ -315,9 +315,23 @@ export class JupyterLabMCPServer {
     this.server.tool(
       "get_document_info",
       "Get information about a document",
-      { path: z.string().describe("Path to the document") },
-      async ({ path }) => {
-        return await this.documentTools.getDocumentInfo(path);
+      {
+        path: z.string().describe("Path to the document"),
+        include_content: z
+          .boolean()
+          .default(false)
+          .describe("Whether to include document content"),
+        max_content: z
+          .number()
+          .default(32768)
+          .describe("Maximum content length to return (default: 32KB)"),
+      },
+      async ({ path, include_content, max_content }) => {
+        return await this.documentTools.getDocumentInfo(
+          path,
+          include_content,
+          max_content,
+        );
       },
     );
 
