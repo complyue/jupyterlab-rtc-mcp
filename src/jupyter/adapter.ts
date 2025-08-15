@@ -12,6 +12,7 @@ import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { logger } from "../utils/logger.js";
 import { cookieManager } from "./cookie-manager.js";
 import { NotebookSession } from "./notebook-session.js";
+import { TextDocumentSession } from "./text-document-session.js";
 
 export interface ISessionModel {
   format: string;
@@ -33,7 +34,7 @@ export class JupyterLabAdapter {
   private baseUrl: string;
   private _kernelManager: KernelManager;
 
-  // private documentSessions: Map<string, DocumentSession>;
+  private documentSessions: Map<string, TextDocumentSession>;
   private notebookSessions: Map<string, NotebookSession>;
   private token: string | undefined;
   private sessionTimeout: number;
@@ -55,11 +56,21 @@ export class JupyterLabAdapter {
     // Initialize the KernelManager with server settings
     this._kernelManager = new KernelManager({ serverSettings });
 
+    this.documentSessions = new Map();
     this.notebookSessions = new Map();
   }
 
   get kernelManager() {
     return this._kernelManager;
+  }
+
+  /**
+   * Get an existing document session
+   * @param fileId File ID of the document
+   * @returns TextDocumentSession or undefined if not found
+   */
+  getDocumentSession(fileId: string): TextDocumentSession | undefined {
+    return this.documentSessions.get(fileId);
   }
 
   /**
@@ -69,6 +80,21 @@ export class JupyterLabAdapter {
    */
   getNotebookSession(fileId: string): NotebookSession | undefined {
     return this.notebookSessions.get(fileId);
+  }
+
+  /**
+   * Close a document session
+   * @param fileId File ID of the document
+   */
+  async closeDocumentSession(fileId: string): Promise<void> {
+    const session = this.documentSessions.get(fileId);
+    if (session) {
+      // Clear any existing timeout timer
+      this.clearSessionTimeout(fileId);
+
+      await session.disconnect();
+      this.documentSessions.delete(fileId);
+    }
   }
 
   /**
@@ -87,11 +113,27 @@ export class JupyterLabAdapter {
   }
 
   /**
+   * Close all document sessions
+   */
+  async closeAllDocumentSessions(): Promise<void> {
+    // Clear all timeout timers for document sessions
+    for (const fileId of this.documentSessions.keys()) {
+      this.clearSessionTimeout(fileId);
+    }
+
+    const closePromises = Array.from(this.documentSessions.values()).map(
+      (session) => session.disconnect(),
+    );
+    await Promise.all(closePromises);
+    this.documentSessions.clear();
+  }
+
+  /**
    * Close all notebook sessions
    */
   async closeAllNotebookSessions(): Promise<void> {
-    // Clear all timeout timers
-    for (const fileId of this.sessionTimeoutTimers.keys()) {
+    // Clear all timeout timers for notebook sessions
+    for (const fileId of this.notebookSessions.keys()) {
       this.clearSessionTimeout(fileId);
     }
 
@@ -100,6 +142,47 @@ export class JupyterLabAdapter {
     );
     await Promise.all(closePromises);
     this.notebookSessions.clear();
+  }
+
+  /**
+   * Create a new document session for the given path
+   * @param path Path to the document
+   * @returns Promise that resolves to a TextDocumentSession
+   */
+  async createDocumentSession(path: string): Promise<TextDocumentSession> {
+    try {
+      // Request a document session from JupyterLab
+      const session = await this.requestDocSession(path, "file");
+
+      // Check if we already have a session for this document
+      if (this.documentSessions.has(session.fileId)) {
+        const existingSession = this.documentSessions.get(session.fileId)!;
+        if (!existingSession.isConnected()) {
+          await existingSession.connect();
+        }
+        return existingSession;
+      }
+
+      // Create a new document session
+      const documentSession = new TextDocumentSession(
+        session,
+        this.baseUrl,
+        this.token,
+      );
+
+      this.documentSessions.set(session.fileId, documentSession);
+
+      // Connect to the document
+      await documentSession.connect();
+
+      // Set up session timeout
+      this.setupSessionTimeout(session.fileId);
+
+      return documentSession;
+    } catch (error) {
+      logger.error(`Error in createDocumentSession for path ${path}`, error);
+      throw error;
+    }
   }
 
   /**
@@ -146,6 +229,70 @@ export class JupyterLabAdapter {
     } catch (error) {
       logger.error(`Error in createNotebookSession for path ${path}`, error);
       throw error;
+    }
+  }
+
+  /**
+   * End an RTC session for a document
+   * @param params Parameters for ending a session
+   * @returns MCP response indicating success
+   */
+  async endDocumentSession(params: { path: string }): Promise<CallToolResult> {
+    // Find the session for this document
+    let sessionToClose = null;
+    let sessionFileId = null;
+    for (const [fileId, session] of this.documentSessions) {
+      const sessionInfo = session.session;
+      if (
+        sessionInfo.fileId === params.path ||
+        sessionInfo.fileId.endsWith(params.path)
+      ) {
+        sessionToClose = session;
+        sessionFileId = fileId;
+        break;
+      }
+    }
+
+    if (sessionToClose) {
+      // Clear any existing timeout timer
+      this.clearSessionTimeout(sessionFileId!);
+
+      await sessionToClose.disconnect();
+      this.documentSessions.delete(sessionFileId!);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                path: params.path,
+                status: "disconnected",
+                message: "RTC session ended successfully",
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    } else {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                path: params.path,
+                status: "not_found",
+                message: "No active RTC session found for this document",
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
     }
   }
 
@@ -203,6 +350,69 @@ export class JupyterLabAdapter {
                 path: params.path,
                 status: "not_found",
                 message: "No active RTC session found for this notebook",
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    }
+  }
+
+  /**
+   * Query the status of an RTC session for a document
+   * @param params Parameters for querying session status
+   * @returns MCP response with session status
+   */
+  async queryDocumentSession(params: {
+    path: string;
+  }): Promise<CallToolResult> {
+    // Find the session for this document
+    let foundSession = null;
+    for (const [, session] of this.documentSessions) {
+      const sessionInfo = session.session;
+      if (
+        sessionInfo.fileId === params.path ||
+        sessionInfo.fileId.endsWith(params.path)
+      ) {
+        foundSession = session;
+        break;
+      }
+    }
+
+    if (foundSession) {
+      const sessionInfo = foundSession.session;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                path: params.path,
+                session_id: sessionInfo.sessionId,
+                file_id: sessionInfo.fileId,
+                connected: foundSession.isConnected(),
+                synced: foundSession.isSynced(),
+                message: "RTC session found",
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    } else {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                path: params.path,
+                status: "not_found",
+                message: "No active RTC session found",
               },
               null,
               2,

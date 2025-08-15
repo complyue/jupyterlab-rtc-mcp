@@ -148,6 +148,15 @@ The MCP server provides the following categories of tools:
 - **delete_document**: Delete a document in JupyterLab
 - **rename_document**: Rename a document in JupyterLab
 - **copy_document**: Copy a document in JupyterLab
+- **overwrite_document**: Overwrite the entire content of a document
+
+### RTC Document Operations
+- **get_document_content**: Get document content using real-time collaboration with truncation support
+- **insert_document_text**: Insert text at a specific position in a document using real-time collaboration
+- **delete_document_text**: Delete text from a specific position in a document using real-time collaboration
+- **replace_document_text**: Replace text in a specific range in a document using real-time collaboration
+- **end_document_session**: End a real-time collaboration session for a document
+- **query_document_session**: Query the status of a real-time collaboration session for a document
 
 For detailed specifications of each tool, including parameters, return values, and examples, please refer to [DESIGN.md](DESIGN.md).
 

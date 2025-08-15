@@ -356,114 +356,197 @@ export class JupyterLabMCPServer {
    * Register document management tools
    */
   private registerDocumentTools(): void {
-    // Tool to list documents
-    this.server.tool(
-      "list_documents",
-      "List available documents in JupyterLab",
-      {
-        path: z
-          .string()
-          .optional()
-          .describe("Path to list documents from (default: root)"),
-      },
-      async ({ path }) => {
-        return await this.documentTools.listDocuments(path);
-      },
-    );
+  // Tool to list documents
+  this.server.tool(
+    "list_documents",
+    "List available documents in JupyterLab",
+    {
+      path: z
+        .string()
+        .optional()
+        .describe("Path to list documents from (default: root)"),
+    },
+    async ({ path }) => {
+      return await this.documentTools.listDocuments(path);
+    },
+  );
 
-    // Tool to create a document
-    this.server.tool(
-      "create_document",
-      "Create a new text document in JupyterLab (markdown, txt, rst, etc.)",
-      {
-        path: z.string().describe("Path for the new document"),
-        type: z
-          .enum(["markdown", "txt", "rst"])
-          .default("markdown")
-          .describe("Document type (markdown, txt, rst, etc.)"),
-        content: z
-          .string()
-          .optional()
-          .describe("Initial content for the document"),
-      },
-      async ({ path, type, content }) => {
-        return await this.documentTools.createDocument(path, type, content);
-      },
-    );
+  // Tool to create a document
+  this.server.tool(
+    "create_document",
+    "Create a new text document in JupyterLab (markdown, txt, rst, etc.)",
+    {
+      path: z.string().describe("Path for the new document"),
+      type: z
+        .enum(["markdown", "txt", "rst"])
+        .default("markdown")
+        .describe("Document type (markdown, txt, rst, etc.)"),
+      content: z
+        .string()
+        .optional()
+        .describe("Initial content for the document"),
+    },
+    async ({ path, type, content }) => {
+      return await this.documentTools.createDocument(path, type, content);
+    },
+  );
 
-    // Tool to get document info
-    this.server.tool(
-      "get_document_info",
-      "Get information about a document",
-      {
-        path: z.string().describe("Path to the document"),
-        include_content: z
-          .boolean()
-          .default(false)
-          .describe("Whether to include document content"),
-        max_content: z
-          .number()
-          .default(32768)
-          .describe("Maximum content length to return (default: 32KB)"),
-      },
-      async ({ path, include_content, max_content }) => {
-        return await this.documentTools.getDocumentInfo(
-          path,
-          include_content,
-          max_content,
-        );
-      },
-    );
+  // Tool to get document info
+  this.server.tool(
+    "get_document_info",
+    "Get information about a document",
+    {
+      path: z.string().describe("Path to the document"),
+      include_content: z
+        .boolean()
+        .default(false)
+        .describe("Whether to include document content"),
+      max_content: z
+        .number()
+        .default(32768)
+        .describe("Maximum content length to return (default: 32KB)"),
+    },
+    async ({ path, include_content, max_content }) => {
+      return await this.documentTools.getDocumentInfo(
+        path,
+        include_content,
+        max_content,
+      );
+    },
+  );
 
-    // Tool to delete a document
-    this.server.tool(
-      "delete_document",
-      "Delete a document in JupyterLab",
-      { path: z.string().describe("Path to the document to delete") },
-      async ({ path }) => {
-        return await this.documentTools.deleteDocument(path);
-      },
-    );
+  // Tool to delete a document
+  this.server.tool(
+    "delete_document",
+    "Delete a document in JupyterLab",
+    { path: z.string().describe("Path to the document to delete") },
+    async ({ path }) => {
+      return await this.documentTools.deleteDocument(path);
+    },
+  );
 
-    // Tool to rename a document
-    this.server.tool(
-      "rename_document",
-      "Rename a document in JupyterLab",
-      {
-        path: z.string().describe("Current path to the document"),
-        newPath: z.string().describe("New path for the document"),
-      },
-      async ({ path, newPath }) => {
-        return await this.documentTools.renameDocument(path, newPath);
-      },
-    );
+  // Tool to rename a document
+  this.server.tool(
+    "rename_document",
+    "Rename a document in JupyterLab",
+    {
+      path: z.string().describe("Current path to the document"),
+      newPath: z.string().describe("New path for the document"),
+    },
+    async ({ path, newPath }) => {
+      return await this.documentTools.renameDocument(path, newPath);
+    },
+  );
 
-    // Tool to copy a document
-    this.server.tool(
-      "copy_document",
-      "Copy a document in JupyterLab",
-      {
-        path: z.string().describe("Path to the document to copy"),
-        copyPath: z.string().describe("Path for the copied document"),
-      },
-      async ({ path, copyPath }) => {
-        return await this.documentTools.copyDocument(path, copyPath);
-      },
-    );
+  // Tool to copy a document
+  this.server.tool(
+    "copy_document",
+    "Copy a document in JupyterLab",
+    {
+      path: z.string().describe("Path to the document to copy"),
+      copyPath: z.string().describe("Path for the copied document"),
+    },
+    async ({ path, copyPath }) => {
+      return await this.documentTools.copyDocument(path, copyPath);
+    },
+  );
 
-    // Tool to modify a document
-    this.server.tool(
-      "modify_document",
-      "Modify the content of a document in JupyterLab",
-      {
-        path: z.string().describe("Path to the document to modify"),
-        content: z.string().describe("New content for the document"),
-      },
-      async ({ path, content }) => {
-        return await this.documentTools.modifyDocument(path, content);
-      },
-    );
-  }
+  // Tool to overwrite a document
+  this.server.tool(
+    "overwrite_document",
+    "Overwrite the entire content of a document",
+    {
+      path: z.string().describe("Path to the document to overwrite"),
+      content: z.string().describe("New content for the document"),
+    },
+    async ({ path, content }) => {
+      return await this.documentTools.overwriteDocument(path, content);
+    },
+  );
+
+  // Tool to get document content using RTC
+  this.server.tool(
+    "get_document_content",
+    "Get document content using real-time collaboration",
+    {
+      path: z.string().describe("Path to the document"),
+      max_content: z
+        .number()
+        .default(32768)
+        .describe("Maximum content length to return (default: 32KB)"),
+    },
+    async ({ path, max_content }) => {
+      return await this.documentTools.getDocumentContent(path, max_content);
+    },
+  );
+
+  // Tool to insert text into a document using RTC
+  this.server.tool(
+    "insert_document_text",
+    "Insert text at a specific position in a document using real-time collaboration",
+    {
+      path: z.string().describe("Path to the document"),
+      position: z.number().describe("Position to insert the text (0-based)"),
+      text: z.string().describe("Text to insert"),
+    },
+    async ({ path, position, text }) => {
+      return await this.documentTools.insertDocumentText(path, position, text);
+    },
+  );
+
+  // Tool to delete text from a document using RTC
+  this.server.tool(
+    "delete_document_text",
+    "Delete text from a specific position in a document using real-time collaboration",
+    {
+      path: z.string().describe("Path to the document"),
+      position: z.number().describe("Starting position to delete from (0-based)"),
+      length: z.number().describe("Number of characters to delete"),
+    },
+    async ({ path, position, length }) => {
+      return await this.documentTools.deleteDocumentText(path, position, length);
+    },
+  );
+
+  // Tool to replace text in a document using RTC
+  this.server.tool(
+    "replace_document_text",
+    "Replace text in a specific range in a document using real-time collaboration",
+    {
+      path: z.string().describe("Path to the document"),
+      position: z.number().describe("Starting position to replace from (0-based)"),
+      length: z.number().describe("Number of characters to replace"),
+      text: z.string().describe("Replacement text"),
+    },
+    async ({ path, position, length, text }) => {
+      return await this.documentTools.replaceDocumentText(path, position, length, text);
+    },
+  );
+
+  // Tool to end a document session
+  this.server.tool(
+    "end_document_session",
+    "End a real-time collaboration session for a document",
+    {
+      path: z.string().describe("Path to the document"),
+    },
+    async ({ path }) => {
+      return await this.documentTools.endDocumentSession(path);
+    },
+  );
+
+  // Tool to query a document session
+  this.server.tool(
+    "query_document_session",
+    "Query the status of a real-time collaboration session for a document",
+    {
+      path: z.string().describe("Path to the document"),
+    },
+    async ({ path }) => {
+      return await this.documentTools.queryDocumentSession(path);
+    },
+  );
+}
 
   /**
    * Connect the server to a transport

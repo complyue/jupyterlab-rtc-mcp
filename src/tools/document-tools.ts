@@ -120,7 +120,7 @@ export class DocumentTools {
         content?: string;
         format?: string;
       } = {
-        type: "file",
+        type: documentType,
       };
 
       // Add content if provided
@@ -492,12 +492,12 @@ export class DocumentTools {
   }
 
   /**
-   * Modify the content of a document
-   * @param path Path to the document to modify
+   * Overwrite the entire content of a document
+   * @param path Path to the document to overwrite
    * @param content New content for the document
    * @returns MCP response indicating success
    */
-  async modifyDocument(path: string, content: string): Promise<CallToolResult> {
+  async overwriteDocument(path: string, content: string): Promise<CallToolResult> {
     try {
       const settings = ServerConnection.makeSettings({
         baseUrl: this.jupyterAdapter["baseUrl"],
@@ -597,6 +597,242 @@ export class DocumentTools {
       logger.error("Failed to modify document:", error);
       throw new Error(
         `Failed to modify document: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Insert text into a document at a specific position using RTC
+   * @param path Path to the document
+   * @param position Position to insert text at
+   * @param text Text to insert
+   * @returns MCP response indicating success
+   */
+  async insertDocumentText(
+    path: string,
+    position: number,
+    text: string,
+  ): Promise<CallToolResult> {
+    try {
+      // Check if this is a notebook file (.ipynb)
+      if (path.toLowerCase().endsWith(".ipynb")) {
+        throw new Error("Cannot insert text into notebook files. Use notebook tools instead.");
+      }
+
+      // For text files, use RTC
+      const docSession = await this.jupyterAdapter.createDocumentSession(path);
+
+      // Ensure the document is synchronized
+      await docSession.ensureSynchronized();
+
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(docSession.session.fileId);
+
+      // Insert text using RTC
+      docSession.insertText(position, text);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully inserted text at position ${position} in document ${path} using RTC`,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to insert document text:", error);
+      throw new Error(
+        `Failed to insert document text: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Delete text from a document at a specific position using RTC
+   * @param path Path to the document
+   * @param position Position to delete text from
+   * @param length Length of text to delete
+   * @returns MCP response indicating success
+   */
+  async deleteDocumentText(
+    path: string,
+    position: number,
+    length: number,
+  ): Promise<CallToolResult> {
+    try {
+      // Check if this is a notebook file (.ipynb)
+      if (path.toLowerCase().endsWith(".ipynb")) {
+        throw new Error("Cannot delete text from notebook files. Use notebook tools instead.");
+      }
+
+      // For text files, use RTC
+      const docSession = await this.jupyterAdapter.createDocumentSession(path);
+
+      // Ensure the document is synchronized
+      await docSession.ensureSynchronized();
+
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(docSession.session.fileId);
+
+      // Delete text using RTC
+      docSession.deleteText(position, length);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully deleted ${length} characters from position ${position} in document ${path} using RTC`,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to delete document text:", error);
+      throw new Error(
+        `Failed to delete document text: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Replace text in a document at a specific position using RTC
+   * @param path Path to the document
+   * @param position Position to replace text from
+   * @param length Length of text to replace
+   * @param text New text to replace with
+   * @returns MCP response indicating success
+   */
+  async replaceDocumentText(
+    path: string,
+    position: number,
+    length: number,
+    text: string,
+  ): Promise<CallToolResult> {
+    try {
+      // Check if this is a notebook file (.ipynb)
+      if (path.toLowerCase().endsWith(".ipynb")) {
+        throw new Error("Cannot replace text in notebook files. Use notebook tools instead.");
+      }
+
+      // For text files, use RTC
+      const docSession = await this.jupyterAdapter.createDocumentSession(path);
+
+      // Ensure the document is synchronized
+      await docSession.ensureSynchronized();
+
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(docSession.session.fileId);
+
+      // Replace text using RTC
+      docSession.replaceText(position, length, text);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully replaced ${length} characters with new text at position ${position} in document ${path} using RTC`,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to replace document text:", error);
+      throw new Error(
+        `Failed to replace document text: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Get document content using RTC
+   * @param path Path to the document
+   * @param maxContent Maximum content length to return (default: 32768)
+   * @returns MCP response with document content
+   */
+  async getDocumentContent(
+    path: string,
+    maxContent: number = 32768,
+  ): Promise<CallToolResult> {
+    try {
+      // Check if this is a notebook file (.ipynb)
+      if (path.toLowerCase().endsWith(".ipynb")) {
+        throw new Error("Cannot get content from notebook files using this method. Use notebook tools instead.");
+      }
+
+      // For text files, use RTC
+      const docSession = await this.jupyterAdapter.createDocumentSession(path);
+
+      // Ensure the document is synchronized
+      await docSession.ensureSynchronized();
+
+      // Update session activity
+      this.jupyterAdapter.updateSessionActivity(docSession.session.fileId);
+
+      // Get document content using RTC
+      let content = docSession.getContent();
+      const contentLength = content.length;
+      const contentInfo: {
+        content_length: number;
+        truncated?: boolean;
+      } = {
+        content_length: contentLength,
+      };
+
+      // Truncate content if it exceeds maxContent
+      if (contentLength > maxContent) {
+        const suffix = "\n\n...[CONTENT TRUNCATED]";
+        content = content.substring(0, maxContent - suffix.length) + suffix;
+        contentInfo.truncated = true;
+      } else {
+        contentInfo.truncated = false;
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(contentInfo, null, 2),
+          },
+          {
+            type: "text",
+            text: content,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to get document content:", error);
+      throw new Error(
+        `Failed to get document content: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * End an RTC session for a document
+   * @param path Path to the document
+   * @returns MCP response indicating success
+   */
+  async endDocumentSession(path: string): Promise<CallToolResult> {
+    try {
+      return await this.jupyterAdapter.endDocumentSession({ path });
+    } catch (error) {
+      logger.error("Failed to end document session:", error);
+      throw new Error(
+        `Failed to end document session: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Query the status of an RTC session for a document
+   * @param path Path to the document
+   * @returns MCP response with session status
+   */
+  async queryDocumentSession(path: string): Promise<CallToolResult> {
+    try {
+      return await this.jupyterAdapter.queryDocumentSession({ path });
+    } catch (error) {
+      logger.error("Failed to query document session:", error);
+      throw new Error(
+        `Failed to query document session: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

@@ -459,8 +459,8 @@ Copy a document in JupyterLab.
 **Returns:**
 Success message indicating the document was copied.
 
-#### modify_document
-Modify the content of a document in JupyterLab.
+#### overwrite_document
+Overwrite the entire content of a document in JupyterLab.
 
 **Parameters:**
 - `path` (required): Path to the document to modify
@@ -468,6 +468,158 @@ Modify the content of a document in JupyterLab.
 
 **Returns:**
 Success message indicating the document was modified.
+
+#### get_document_content
+Get document content using real-time collaboration.
+
+**Parameters:**
+- `path` (required): Path to the document
+- `max_content` (optional, default: 32768): Maximum content length to return (default: 32KB)
+
+**Returns:**
+A JSON object with document content:
+- `content`: The document content
+- `truncated`: Boolean indicating if content was truncated due to size limits
+- `content_length`: Length of the content
+
+**Example:**
+```json
+{
+  "content": "# Document Content\n\nThis is a sample document.",
+  "truncated": false,
+  "content_length": 42
+}
+```
+
+**Note:** This tool uses RTC to efficiently retrieve document content, especially useful for large documents where only a portion is needed.
+
+#### insert_document_text
+Insert text at a specific position in a document using real-time collaboration.
+
+**Parameters:**
+- `path` (required): Path to the document
+- `position` (required): Position to insert the text (0-based)
+- `text` (required): Text to insert
+
+**Returns:**
+Success message indicating the text was inserted.
+
+**Example:**
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Successfully inserted text at position 42"
+    }
+  ]
+}
+```
+
+**Note:** This tool uses Yjs RTC to efficiently insert text at the specified position, with changes immediately visible to all collaborators.
+
+#### delete_document_text
+Delete text from a specific position in a document using real-time collaboration.
+
+**Parameters:**
+- `path` (required): Path to the document
+- `position` (required): Starting position to delete from (0-based)
+- `length` (required): Number of characters to delete
+
+**Returns:**
+Success message indicating the text was deleted.
+
+**Example:**
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Successfully deleted 10 characters from position 42"
+    }
+  ]
+}
+```
+
+**Note:** This tool uses Yjs RTC to efficiently delete text from the specified position, with changes immediately visible to all collaborators.
+
+#### replace_document_text
+Replace text in a specific range in a document using real-time collaboration.
+
+**Parameters:**
+- `path` (required): Path to the document
+- `position` (required): Starting position to replace from (0-based)
+- `length` (required): Number of characters to replace
+- `text` (required): Replacement text
+
+**Returns:**
+Success message indicating the text was replaced.
+
+**Example:**
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Successfully replaced 10 characters with new text at position 42"
+    }
+  ]
+}
+```
+
+**Note:** This tool uses Yjs RTC to efficiently replace text in the specified range, with changes immediately visible to all collaborators.
+
+#### end_document_session
+End a real-time collaboration session for a document.
+
+**Parameters:**
+- `path` (required): Path to the document
+
+**Returns:**
+A JSON object with session status:
+- `path`: Path to the document
+- `status`: Session status ("disconnected" or "not_found")
+- `message`: Status message
+
+**Example:**
+```json
+{
+  "path": "/example/document.md",
+  "status": "disconnected",
+  "message": "RTC session ended successfully"
+}
+```
+
+**Note:** This tool can be used to manually terminate a document session before the automatic timeout.
+
+#### query_document_session
+Query the status of a real-time collaboration session for a document.
+
+**Parameters:**
+- `path` (required): Path to the document
+
+**Returns:**
+A JSON object with session status information:
+- `path`: Path to the document
+- `session_id`: RTC session ID (if active)
+- `file_id`: File ID for the RTC session (if active)
+- `status`: Session status ("connected", "disconnected", or "not_found")
+- `last_activity`: Timestamp of last activity (if active)
+- `message`: Status message
+
+**Example:**
+```json
+{
+  "path": "/example/document.md",
+  "session_id": "session-id-123",
+  "file_id": "file-id-456",
+  "status": "connected",
+  "last_activity": "2023-01-01T12:00:00Z",
+  "message": "RTC session is active"
+}
+```
+
+**Note:** This tool can be used to check if a document has an active RTC session and when it was last accessed.
 
 ### RTC Session Management
 
