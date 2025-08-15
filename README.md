@@ -141,7 +141,6 @@ The MCP server provides the following categories of tools:
 - **delete_document**: Delete a document in JupyterLab
 - **rename_document**: Rename a document in JupyterLab
 - **copy_document**: Copy a document in JupyterLab
-- **document_exists**: Check if a document exists in JupyterLab
 
 For detailed specifications of each tool, including parameters, return values, and examples, please refer to [DESIGN.md](DESIGN.md).
 

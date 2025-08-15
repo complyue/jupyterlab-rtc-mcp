@@ -430,16 +430,6 @@ Modify the content of a document in JupyterLab.
 **Returns:**
 Success message indicating the document was modified.
 
-#### document_exists
-Check if a document exists in JupyterLab.
-
-**Parameters:**
-- `path` (required): Path to the document to check
-
-**Returns:**
-A JSON object with:
-- `exists`: Boolean indicating whether the document exists
-
 ## Architecture Overview
 
 ### Session Management
