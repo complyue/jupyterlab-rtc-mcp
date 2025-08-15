@@ -3,6 +3,7 @@ import { z } from "zod";
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
 import { NotebookTools } from "../tools/notebook-tools.js";
 import { DocumentTools } from "../tools/document-tools.js";
+import { URLTools } from "../tools/url-tools.js";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
 /**
@@ -16,6 +17,7 @@ export class JupyterLabMCPServer {
   private jupyterAdapter: JupyterLabAdapter;
   private notebookTools: NotebookTools;
   private documentTools: DocumentTools;
+  private urlTools: URLTools;
 
   constructor(sessionTimeout?: number, name?: string, version?: string) {
     // Create MCP server using the idiomatic McpServer class
@@ -37,12 +39,16 @@ export class JupyterLabMCPServer {
     // Initialize tools
     this.notebookTools = new NotebookTools(this.jupyterAdapter);
     this.documentTools = new DocumentTools(this.jupyterAdapter);
+    this.urlTools = new URLTools(this.jupyterAdapter);
 
     // Notebook Operation Tools
     this.registerNotebookTools();
 
     // Document Management Tools
     this.registerDocumentTools();
+
+    // URL Tools
+    this.registerURLTools();
   }
 
   /**
@@ -454,5 +460,32 @@ export class JupyterLabMCPServer {
    */
   getJupyterLabAdapter(): JupyterLabAdapter {
     return this.jupyterAdapter;
+  }
+
+  /**
+   * Register URL tools
+   */
+  private registerURLTools(): void {
+    // Tool to get the base URL
+    this.server.tool(
+      "get_base_url",
+      "Get the base URL of the JupyterLab server",
+      {},
+      async () => {
+        return await this.urlTools.getBaseUrl();
+      },
+    );
+
+    // Tool to extract notebook path from URL
+    this.server.tool(
+      "nb_path_from_url",
+      "Extract the notebook path from a full JupyterLab URL with proper URL decoding",
+      {
+        url: z.string().describe("Full JupyterLab URL to a notebook"),
+      },
+      async ({ url }) => {
+        return await this.urlTools.nbPathFromUrl(url);
+      },
+    );
   }
 }

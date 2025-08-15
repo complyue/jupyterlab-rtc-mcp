@@ -4,81 +4,55 @@ This document contains detailed specifications for all tools available in the Ju
 
 ## Available Tools
 
-### RTC Session Management
+### URL Tools
 
-#### end_nb_session
-End a real-time collaboration session for a notebook.
+#### get_base_url
+Get the base URL of the JupyterLab server.
 
 **Parameters:**
-- `path` (required): Path to the notebook file
+None
 
 **Returns:**
-A JSON object with session status:
-- `path`: Path to the notebook
-- `status`: Session status ("disconnected" or "not_found")
-- `message`: Status message
+A JSON object with the base URL:
+- `base_url`: The base URL of the JupyterLab server
 
 **Example:**
 ```json
 {
-  "path": "/example/notebook1.ipynb",
-  "status": "disconnected",
-  "message": "RTC session ended successfully"
+  "base_url": "http://localhost:8888"
 }
 ```
 
-**Note:** Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes). This tool can be used to manually terminate a session before the timeout.
+**Note:** This tool is useful for AI agents to understand the server context and for constructing full URLs when needed.
 
-#### query_nb_sessions
-Query the status of real-time collaboration sessions for notebooks in a directory.
+#### nb_path_from_url
+Extract the notebook path from a full JupyterLab URL with proper URL decoding.
 
 **Parameters:**
-- `root_path` (optional): Directory path to search for notebook sessions (default: lab root directory)
+- `url` (required): Full JupyterLab URL to a notebook
 
 **Returns:**
-A JSON object with session status information:
-- `root_path`: The directory path that was queried
-- `sessions`: Array of session objects for each notebook with active sessions
-  - `path`: Path to the notebook
-  - `session_id`: RTC session ID (if active)
-  - `file_id`: File ID for the RTC session (if active)
-  - `status`: Session status ("connected", "disconnected", or "not_found")
-  - `cell_count`: Number of cells in the notebook (if active)
-  - `last_activity`: Timestamp of last activity (if active)
-  - `message`: Status message
-- `total_sessions`: Total number of sessions found
-- `active_sessions`: Number of currently active sessions
+A JSON object with the extracted notebook path:
+- `original_url`: The original URL provided
+- `base_url`: The base URL of the JupyterLab server
+- `notebook_path`: The extracted and decoded notebook path
 
 **Example:**
 ```json
 {
-  "root_path": "/example",
-  "sessions": [
-    {
-      "path": "/example/notebook1.ipynb",
-      "session_id": "session-id-123",
-      "file_id": "file-id-456",
-      "status": "connected",
-      "cell_count": 5,
-      "last_activity": "2023-01-01T12:00:00Z",
-      "message": "RTC session is active"
-    },
-    {
-      "path": "/example/notebook2.ipynb",
-      "session_id": "session-id-789",
-      "file_id": "file-id-012",
-      "status": "disconnected",
-      "cell_count": 3,
-      "last_activity": "2023-01-01T11:30:00Z",
-      "message": "RTC session ended"
-    }
-  ],
-  "total_sessions": 2,
-  "active_sessions": 1
+  "original_url": "http://localhost:8888/tree/example/notebook1.ipynb",
+  "base_url": "http://localhost:8888",
+  "notebook_path": "example/notebook1.ipynb"
 }
 ```
 
-**Note:** Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes). The `last_activity` timestamp shows when the session was last accessed.
+**Supported URL Patterns:**
+- `/tree/path/to/notebook.ipynb`
+- `/notebooks/path/to/notebook.ipynb`
+- `/edit/path/to/notebook.ipynb`
+- `/view/path/to/notebook.ipynb`
+
+**Note:** This tool handles URL decoding to properly extract notebook paths with special characters. It validates that the extracted path ends with `.ipynb` to ensure it's a notebook file.
 
 ### Notebook Operations
 
@@ -494,6 +468,82 @@ Modify the content of a document in JupyterLab.
 
 **Returns:**
 Success message indicating the document was modified.
+
+### RTC Session Management
+
+#### end_nb_session
+End a real-time collaboration session for a notebook.
+
+**Parameters:**
+- `path` (required): Path to the notebook file
+
+**Returns:**
+A JSON object with session status:
+- `path`: Path to the notebook
+- `status`: Session status ("disconnected" or "not_found")
+- `message`: Status message
+
+**Example:**
+```json
+{
+  "path": "/example/notebook1.ipynb",
+  "status": "disconnected",
+  "message": "RTC session ended successfully"
+}
+```
+
+**Note:** Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes). This tool can be used to manually terminate a session before the timeout.
+
+#### query_nb_sessions
+Query the status of real-time collaboration sessions for notebooks in a directory.
+
+**Parameters:**
+- `root_path` (optional): Directory path to search for notebook sessions (default: lab root directory)
+
+**Returns:**
+A JSON object with session status information:
+- `root_path`: The directory path that was queried
+- `sessions`: Array of session objects for each notebook with active sessions
+  - `path`: Path to the notebook
+  - `session_id`: RTC session ID (if active)
+  - `file_id`: File ID for the RTC session (if active)
+  - `status`: Session status ("connected", "disconnected", or "not_found")
+  - `cell_count`: Number of cells in the notebook (if active)
+  - `last_activity`: Timestamp of last activity (if active)
+  - `message`: Status message
+- `total_sessions`: Total number of sessions found
+- `active_sessions`: Number of currently active sessions
+
+**Example:**
+```json
+{
+  "root_path": "/example",
+  "sessions": [
+    {
+      "path": "/example/notebook1.ipynb",
+      "session_id": "session-id-123",
+      "file_id": "file-id-456",
+      "status": "connected",
+      "cell_count": 5,
+      "last_activity": "2023-01-01T12:00:00Z",
+      "message": "RTC session is active"
+    },
+    {
+      "path": "/example/notebook2.ipynb",
+      "session_id": "session-id-789",
+      "file_id": "file-id-012",
+      "status": "disconnected",
+      "cell_count": 3,
+      "last_activity": "2023-01-01T11:30:00Z",
+      "message": "RTC session ended"
+    }
+  ],
+  "total_sessions": 2,
+  "active_sessions": 1
+}
+```
+
+**Note:** Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes). The `last_activity` timestamp shows when the session was last accessed.
 
 ## Architecture Overview
 
