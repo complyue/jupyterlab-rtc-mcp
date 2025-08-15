@@ -37,18 +37,45 @@ export class JupyterLabMCPServer {
     this.jupyterAdapter = new JupyterLabAdapter(sessionTimeout);
 
     // Initialize tools
+    this.urlTools = new URLTools(this.jupyterAdapter);
     this.notebookTools = new NotebookTools(this.jupyterAdapter);
     this.documentTools = new DocumentTools(this.jupyterAdapter);
-    this.urlTools = new URLTools(this.jupyterAdapter);
+
+    // URL Tools
+    this.registerURLTools();
 
     // Notebook Operation Tools
     this.registerNotebookTools();
 
     // Document Management Tools
     this.registerDocumentTools();
+  }
 
-    // URL Tools
-    this.registerURLTools();
+  /**
+   * Register URL tools
+   */
+  private registerURLTools(): void {
+    // Tool to get the base URL
+    this.server.tool(
+      "get_base_url",
+      "Get the base URL of the JupyterLab server",
+      {},
+      async () => {
+        return await this.urlTools.getBaseUrl();
+      },
+    );
+
+    // Tool to extract notebook path from URL
+    this.server.tool(
+      "nb_path_from_url",
+      "Extract the notebook path from a full JupyterLab URL with proper URL decoding",
+      {
+        url: z.string().describe("Full JupyterLab URL to a notebook"),
+      },
+      async ({ url }) => {
+        return await this.urlTools.nbPathFromUrl(url);
+      },
+    );
   }
 
   /**
@@ -462,30 +489,4 @@ export class JupyterLabMCPServer {
     return this.jupyterAdapter;
   }
 
-  /**
-   * Register URL tools
-   */
-  private registerURLTools(): void {
-    // Tool to get the base URL
-    this.server.tool(
-      "get_base_url",
-      "Get the base URL of the JupyterLab server",
-      {},
-      async () => {
-        return await this.urlTools.getBaseUrl();
-      },
-    );
-
-    // Tool to extract notebook path from URL
-    this.server.tool(
-      "nb_path_from_url",
-      "Extract the notebook path from a full JupyterLab URL with proper URL decoding",
-      {
-        url: z.string().describe("Full JupyterLab URL to a notebook"),
-      },
-      async ({ url }) => {
-        return await this.urlTools.nbPathFromUrl(url);
-      },
-    );
-  }
 }
