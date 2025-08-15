@@ -212,7 +212,7 @@ Restart the kernel of a specified notebook, with options to clear contents and e
 
 **Parameters:**
 - `path` (required): Path to the notebook file
-- `clear_contents` (optional, default: false): Whether to clear cell contents after restart
+- `clear_outputs` (optional, default: false): Whether to clear cell outputs after restart
 - `exec` (optional, default: true): Whether to execute cells after restart
 - `kernel_name` (optional): Name of the kernel to use (from list_available_kernels). If not specified, uses the current kernel or creates a new one with the default kernel.
 

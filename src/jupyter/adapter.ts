@@ -275,7 +275,6 @@ export class JupyterLabAdapter {
 
     if (foundSession) {
       const sessionInfo = foundSession.session;
-      const notebookContent = foundSession.getNotebookContent();
 
       return {
         content: [
@@ -286,12 +285,9 @@ export class JupyterLabAdapter {
                 path: params.path,
                 session_id: sessionInfo.sessionId,
                 file_id: sessionInfo.fileId,
-                status: foundSession.isConnected()
-                  ? "connected"
-                  : "disconnected",
-                cell_count: notebookContent.cells.length,
-                last_activity: new Date().toISOString(),
-                message: "RTC session is active",
+                connected: foundSession.isConnected(),
+                synced: foundSession.isSynced(),
+                message: "RTC session found",
               },
               null,
               2,
@@ -308,7 +304,7 @@ export class JupyterLabAdapter {
               {
                 path: params.path,
                 status: "not_found",
-                message: "No active RTC session found for this notebook",
+                message: "No active RTC session found",
               },
               null,
               2,
@@ -399,12 +395,8 @@ export class JupyterLabAdapter {
 
       if (foundSession) {
         const sessionInfo = foundSession.session;
-        const notebookContent = foundSession.getNotebookContent();
-        const status = foundSession.isConnected()
-          ? "connected"
-          : "disconnected";
 
-        if (status === "connected") {
+        if (foundSession.isConnected()) {
           activeSessions++;
         }
 
@@ -412,13 +404,11 @@ export class JupyterLabAdapter {
           path: notebook.path,
           session_id: sessionInfo.sessionId,
           file_id: sessionInfo.fileId,
-          status,
-          cell_count: notebookContent.cells.length,
-          last_activity: new Date().toISOString(),
-          message:
-            status === "connected"
-              ? "RTC session is active"
-              : "RTC session ended",
+          connected: foundSession.isConnected(),
+          synced: foundSession.isSynced(),
+          message: foundSession.isConnected()
+            ? "RTC session is active"
+            : "RTC session ended",
         });
       } else {
         sessions.push({

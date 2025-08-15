@@ -1,8 +1,5 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
-import { ICodeCell } from "@jupyterlab/nbformat";
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
-import { NotebookSession } from "../jupyter/notebook-session.js";
-import { ISessionModel } from "../jupyter/notebook-session.js";
 import { logger } from "../utils/logger.js";
 
 import {
@@ -14,15 +11,15 @@ import {
   CellInsertion,
   KernelInfo,
 } from "../jupyter/types.js";
+import { YCodeCell } from "@jupyter/ydoc";
 
 export interface NotebookStatusResult {
   path: string;
   cell_count: number;
   last_modified: string;
   kernel?: {
-    name: string;
     id: string;
-    state: string;
+    name: string;
   };
 }
 
@@ -208,18 +205,18 @@ export class NotebookTools {
   async getNotebookStatus(params: { path: string }): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const notebookSession = await this.jupyterAdapter.createNotebookSession(
+      const nbSession = await this.jupyterAdapter.createNotebookSession(
         params.path,
       );
 
       // Ensure the notebook is synchronized
-      await notebookSession.ensureSynchronized();
+      await nbSession.ensureSynchronized();
 
       // Get notebook content
-      const notebookContent = notebookSession.getNotebookContent();
+      const notebookContent = nbSession.getYNotebook().toJSON();
 
       // Get kernel session information
-      const kernelSession = await notebookSession.getKernelSession();
+      const kernelSession = await nbSession.getKernelSession();
 
       // Get file information using contents API
       const { ServerConnection } = await import("@jupyterlab/services");
@@ -276,17 +273,14 @@ export class NotebookTools {
       const result: NotebookStatusResult = {
         path: params.path,
         cell_count: notebookContent.cells.length,
-        last_modified:
-          (parsedData as JupyterContent)?.last_modified ||
-          new Date().toISOString(),
+        last_modified: (parsedData as JupyterContent).last_modified!,
       };
 
       // Add kernel information if available
       if (kernelSession) {
         result.kernel = {
-          name: kernelSession.name,
           id: kernelSession.id,
-          state: kernelSession.executionState,
+          name: kernelSession.name,
         };
       }
 
@@ -317,15 +311,15 @@ export class NotebookTools {
   }): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const notebookSession = await this.jupyterAdapter.createNotebookSession(
+      const nbSession = await this.jupyterAdapter.createNotebookSession(
         params.path,
       );
 
       // Ensure the notebook is synchronized
-      await notebookSession.ensureSynchronized();
+      await nbSession.ensureSynchronized();
 
       // Get notebook content
-      const notebookContent = notebookSession.getNotebookContent();
+      const notebookContent = nbSession.getYNotebook().toJSON();
 
       // If no ranges specified, return all cells
       const ranges = params.ranges || [
@@ -375,39 +369,40 @@ export class NotebookTools {
   }): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const notebookSession = await this.jupyterAdapter.createNotebookSession(
+      const nbSession = await this.jupyterAdapter.createNotebookSession(
         params.path,
       );
 
       // Ensure the notebook is synchronized
-      await notebookSession.ensureSynchronized();
+      await nbSession.ensureSynchronized();
 
-      // Get notebook content
-      const notebookContent = notebookSession.getNotebookContent();
-
-      // Track cell IDs for execution
-      const cellIdsToExecute: string[] = [];
+      const ynb = nbSession.getYNotebook();
+      const cells2exec: YCodeCell[] = [];
 
       // Apply each modification
-      for (const modification of params.modifications) {
-        const start = Math.max(0, modification.range.start);
-        const end = Math.min(
-          notebookContent.cells.length,
-          modification.range.end || notebookContent.cells.length,
-        );
-
-        // Update each cell in the range
-        for (let i = start; i < end; i++) {
-          const cell = notebookContent.cells[i];
-          const cellId = cell.id! as string;
-          notebookSession.updateCellContent(cellId, modification.content);
-          cellIdsToExecute.push(cellId);
+      ynb.transact(() => {
+        for (const modification of params.modifications) {
+          const start = Math.max(0, modification.range.start);
+          const end = Math.min(
+            ynb.cells.length,
+            modification.range.end || ynb.cells.length,
+          );
+          // Update each cell in the range
+          for (let i = start; i < end; i++) {
+            const cell = ynb.getCell(i);
+            cell.setSource(modification.content);
+            if (cell.cell_type === "code") {
+              cells2exec.push(cell);
+            }
+          }
         }
-      }
+      });
 
       // Execute cells if requested
-      if (params.exec !== false && cellIdsToExecute.length > 0) {
-        await this.executeCells(notebookSession, cellIdsToExecute);
+      if (params.exec !== false) {
+        for (const cell of cells2exec) {
+          await nbSession.executeCell(cell);
+        }
       }
 
       return {
@@ -447,30 +442,26 @@ export class NotebookTools {
   }): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const notebookSession = await this.jupyterAdapter.createNotebookSession(
+      const nbSession = await this.jupyterAdapter.createNotebookSession(
         params.path,
       );
 
       // Ensure the notebook is synchronized
-      await notebookSession.ensureSynchronized();
+      await nbSession.ensureSynchronized();
 
-      // Track cell IDs for execution
-      const cellIds: string[] = [];
+      const ynb = nbSession.getYNotebook();
+      const cells2exec: YCodeCell[] = [];
 
-      // Insert each cell
-      for (const cell of params.cells) {
-        const cellType = cell.type || "code";
-        const cellId = notebookSession.addCell(
-          cell.content,
-          cellType,
-          params.position + cellIds.length,
-        );
-        cellIds.push(cellId);
-      }
+      ynb.transact(() => {
+        // TODO: use bulk insertion api to insert cells, push resulted new code cells into cells2exec
+        ynb.insertCells(0, []);
+      });
 
       // Execute cells if requested
-      if (params.exec !== false && cellIds.length > 0) {
-        await this.executeCells(notebookSession, cellIds);
+      if (params.exec !== false) {
+        for (const cell of cells2exec) {
+          await nbSession.executeCell(cell);
+        }
       }
 
       return {
@@ -479,8 +470,7 @@ export class NotebookTools {
             type: "text",
             text: JSON.stringify(
               {
-                message: `Successfully inserted ${cellIds.length} cells${params.exec !== false ? " and executed cells" : ""}`,
-                cell_ids: cellIds,
+                message: `Successfully inserted cells`,
                 executed: params.exec !== false,
               },
               null,
@@ -508,36 +498,27 @@ export class NotebookTools {
   }): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const notebookSession = await this.jupyterAdapter.createNotebookSession(
+      const nbSession = await this.jupyterAdapter.createNotebookSession(
         params.path,
       );
 
       // Ensure the notebook is synchronized
-      await notebookSession.ensureSynchronized();
+      await nbSession.ensureSynchronized();
 
-      // Get notebook content
-      const notebookContent = notebookSession.getNotebookContent();
-
-      // Count deleted cells
-      let deletedCellsCount = 0;
+      const ynb = nbSession.getYNotebook();
 
       // Process ranges in reverse order to avoid index shifting when deleting cells
       const sortedRanges = [...params.ranges].sort((a, b) => b.start - a.start);
 
-      for (const range of sortedRanges) {
-        const start = Math.max(0, range.start);
-        const end = Math.min(
-          notebookContent.cells.length,
-          range.end || notebookContent.cells.length,
-        );
-
-        // Delete cells in this range (in reverse order to avoid index shifting)
-        for (let i = end - 1; i >= start; i--) {
-          const cell = notebookContent.cells[i];
-          notebookSession.deleteCell(cell.id! as string);
-          deletedCellsCount++;
+      ynb.transact(() => {
+        // TODO: the correct logic must consider overlapping of ranges, as well as index shift
+        //       after previous range has been deleted, non-1st range must be adjusted accordingly
+        for (const range of sortedRanges) {
+          const start = Math.max(0, range.start);
+          const end = Math.min(ynb.cells.length, range.end || ynb.cells.length);
+          ynb.deleteCellRange(start, end);
         }
-      }
+      });
 
       return {
         content: [
@@ -545,8 +526,7 @@ export class NotebookTools {
             type: "text",
             text: JSON.stringify(
               {
-                message: `Successfully deleted ${deletedCellsCount} cells`,
-                deleted_cells: deletedCellsCount,
+                message: `Successfully deleted cells`,
               },
               null,
               2,
@@ -569,44 +549,21 @@ export class NotebookTools {
    */
   async restartNotebookKernel(params: {
     path: string;
-    clear_contents?: boolean;
+    clear_outputs?: boolean;
     exec?: boolean;
     kernel_name?: string;
   }): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const notebookSession = await this.jupyterAdapter.createNotebookSession(
+      const nbSession = await this.jupyterAdapter.createNotebookSession(
         params.path,
       );
 
-      // Ensure the notebook is synchronized
-      await notebookSession.ensureSynchronized();
-
-      // Restart the kernel
-      await this.restartKernel(notebookSession, params.kernel_name);
-
-      // Clear cell contents if requested
-      if (params.clear_contents) {
-        const notebookContent = notebookSession.getNotebookContent();
-
-        for (const cell of notebookContent.cells) {
-          if (cell.type === "code") {
-            notebookSession.updateCellContent(cell.id! as string, "");
-          }
-        }
-      }
-
-      // Execute cells if requested
-      if (params.exec !== false) {
-        const notebookContent = notebookSession.getNotebookContent();
-        const cellIds = notebookContent.cells
-          .filter((cell) => cell.cell_type === "code")
-          .map((cell) => cell.id! as string);
-
-        if (cellIds.length > 0) {
-          await this.executeCells(notebookSession, cellIds);
-        }
-      }
+      await nbSession.restartKernel(
+        params.kernel_name,
+        params.clear_outputs,
+        params.exec,
+      );
 
       return {
         content: [
@@ -614,8 +571,8 @@ export class NotebookTools {
             type: "text",
             text: JSON.stringify(
               {
-                message: `Successfully restarted notebook kernel${params.clear_contents ? " and cleared contents" : ""}${params.exec !== false ? " and executed cells" : ""}`,
-                cleared_contents: !!params.clear_contents,
+                message: `Successfully restarted notebook kernel`,
+                cleared_outputs: !!params.clear_outputs,
                 executed_cells: params.exec !== false,
               },
               null,
@@ -629,137 +586,6 @@ export class NotebookTools {
       throw new Error(
         `Failed to restart notebook kernel: ${error instanceof Error ? error.message : String(error)}`,
       );
-    }
-  }
-
-  /**
-   * Execute cells in a notebook
-   * @param session Document session
-   * @param cellIds Array of cell IDs to execute
-   */
-  private async executeCells(
-    session: NotebookSession,
-    cellIds: string[],
-  ): Promise<void> {
-    try {
-      // Get notebook content to retrieve cell source code
-      const notebookContent = session.getNotebookContent();
-
-      // Get kernel session
-      const kernelSession = await session.getKernelSession();
-
-      if (!kernelSession) {
-        logger.warn("No kernel session available for execution");
-        return;
-      }
-
-      // Execute each cell
-      for (const cellId of cellIds) {
-        const cell = notebookContent.cells.find((c) => c.id === cellId);
-        if (cell && cell.type === "code") {
-          try {
-            await session.executeCode((cell as ICodeCell).source);
-          } catch (error) {
-            logger.error(`Failed to execute cell ${cellId}:`, error);
-            // Continue with other cells even if one fails
-          }
-        }
-      }
-    } catch (error) {
-      logger.error("Failed to execute cells:", error);
-      throw error;
-    }
-  }
-
-  private async restartKernel(
-    session: NotebookSession,
-    kernelName?: string,
-  ): Promise<void> {
-    try {
-      const { ServerConnection } = await import("@jupyterlab/services");
-      const { URLExt } = await import("@jupyterlab/coreutils");
-
-      const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
-      });
-
-      // Get the current kernel session
-      const kernelSession = await session.getKernelSession();
-
-      if (kernelSession) {
-        // Restart the existing kernel
-        const url = URLExt.join(
-          settings.baseUrl,
-          "api/kernels",
-          kernelSession.id,
-          "restart",
-        );
-
-        const init: RequestInit = {
-          method: "POST",
-        };
-
-        // Add authorization header if token is provided
-        const token = process.env.JUPYTERLAB_TOKEN;
-        if (token) {
-          init.headers = {
-            ...init.headers,
-            Authorization: `token ${token}`,
-          };
-        }
-
-        let response: Response;
-        response = await ServerConnection.makeRequest(url, init, settings);
-
-        if (!response.ok) {
-          const data = await response.text();
-          throw new Error(`Kernel restart failed: ${data}`);
-        }
-      } else {
-        // No kernel exists, create a new one
-        const sessionInfo = (session as unknown as { session: ISessionModel })
-          .session;
-
-        const url = URLExt.join(
-          settings.baseUrl,
-          "api/sessions",
-          sessionInfo.sessionId,
-        );
-
-        const kernelSpec = kernelName ? { name: kernelName } : {};
-
-        const init: RequestInit = {
-          method: "POST",
-          body: JSON.stringify({
-            kernel: kernelSpec,
-          }),
-        };
-
-        // Add authorization header if token is provided
-        const token = process.env.JUPYTERLAB_TOKEN;
-        if (token) {
-          init.headers = {
-            ...init.headers,
-            Authorization: `token ${token}`,
-          };
-        }
-
-        let response: Response;
-        response = await ServerConnection.makeRequest(url, init, settings);
-
-        if (!response.ok) {
-          const data = await response.text();
-          throw new Error(`Kernel creation failed: ${data}`);
-        }
-      }
-
-      // Re-initialize the kernel session in the notebook session
-      await (
-        session as unknown as { _initializeKernelSession: () => Promise<void> }
-      )._initializeKernelSession();
-    } catch (error) {
-      logger.error("Failed to restart kernel:", error);
-      throw error;
     }
   }
 
@@ -871,64 +697,11 @@ export class NotebookTools {
   }): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
-      const notebookSession = await this.jupyterAdapter.createNotebookSession(
+      const nbSession = await this.jupyterAdapter.createNotebookSession(
         params.path,
       );
 
-      // Ensure the notebook is synchronized
-      await notebookSession.ensureSynchronized();
-
-      // Get session info
-      const sessionInfo = (
-        notebookSession as unknown as { session: ISessionModel }
-      ).session;
-
-      // Update the session with the new kernel
-      const { ServerConnection } = await import("@jupyterlab/services");
-      const { URLExt } = await import("@jupyterlab/coreutils");
-
-      const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
-      });
-
-      const url = URLExt.join(
-        settings.baseUrl,
-        "api/sessions",
-        sessionInfo.sessionId,
-      );
-
-      const init: RequestInit = {
-        method: "PATCH",
-        body: JSON.stringify({
-          kernel: {
-            name: params.kernel_name,
-          },
-        }),
-      };
-
-      // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
-      if (token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
-      let response: Response;
-      response = await ServerConnection.makeRequest(url, init, settings);
-
-      if (!response.ok) {
-        const data = await response.text();
-        throw new Error(`Kernel assignment failed: ${data}`);
-      }
-
-      // Re-initialize the kernel session in the notebook session
-      await (
-        notebookSession as unknown as {
-          _initializeKernelSession: () => Promise<void>;
-        }
-      )._initializeKernelSession();
+      await nbSession.getKernelSession(params.kernel_name);
 
       return {
         content: [

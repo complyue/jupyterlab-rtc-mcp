@@ -246,7 +246,7 @@ export class JupyterLabMCPServer {
       "Restart the kernel of a specified notebook",
       {
         path: z.string().describe("Path to the notebook file"),
-        clear_contents: z
+        clear_outputs: z
           .boolean()
           .default(false)
           .describe("Whether to clear cell contents after restart"),
@@ -263,7 +263,7 @@ export class JupyterLabMCPServer {
         return await this.notebookTools.restartNotebookKernel(
           args as {
             path: string;
-            clear_contents?: boolean;
+            clear_outputs?: boolean;
             exec?: boolean;
             kernel_name?: string;
           },
