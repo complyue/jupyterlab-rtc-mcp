@@ -91,6 +91,20 @@ export class JupyterLabMCPServer {
       },
     );
 
+    // Tool to create a notebook
+    this.server.tool(
+      "create_notebook",
+      "Create a new empty notebook in JupyterLab",
+      {
+        path: z
+          .string()
+          .describe("Path for the new notebook file (must end with .ipynb)"),
+      },
+      async ({ path }) => {
+        return await this.notebookTools.createNotebook(path);
+      },
+    );
+
     // Tool to get notebook status
     this.server.tool(
       "get_nb_stat",
@@ -317,13 +331,13 @@ export class JupyterLabMCPServer {
     // Tool to create a document
     this.server.tool(
       "create_document",
-      "Create a new document in JupyterLab",
+      "Create a new text document in JupyterLab (markdown, txt, rst, etc.)",
       {
         path: z.string().describe("Path for the new document"),
         type: z
-          .enum(["notebook", "file", "markdown"])
-          .default("notebook")
-          .describe("Document type"),
+          .enum(["markdown", "txt", "rst"])
+          .default("markdown")
+          .describe("Document type (markdown, txt, rst, etc.)"),
         content: z
           .string()
           .optional()

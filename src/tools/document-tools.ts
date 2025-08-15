@@ -97,7 +97,7 @@ export class DocumentTools {
   /**
    * Create a new document in JupyterLab
    * @param path Path for the new document
-   * @param type Document type
+   * @param type Document type (markdown, txt, rst, etc.)
    * @param content Initial content for the document
    * @returns MCP response indicating success
    */
@@ -112,24 +112,29 @@ export class DocumentTools {
       });
       const url = URLExt.join(settings.baseUrl, "/api/contents", path);
 
-      // Default to 'file' type if not specified
-      const documentType = type || "file";
+      // Default to 'markdown' type if not specified
+      const documentType = type || "markdown";
 
       const requestBody: {
         type: string;
         content?: string;
         format?: string;
       } = {
-        type: documentType,
+        type: "file",
       };
 
       // Add content if provided
       if (content !== undefined) {
         requestBody.content = content;
         // For files, we need to specify the format
-        if (documentType === "file") {
-          requestBody.format = "text";
-        }
+        requestBody.format = "text";
+      }
+
+      // Validate that we're not creating a notebook file
+      if (path.toLowerCase().endsWith(".ipynb")) {
+        throw new Error(
+          "Cannot create .ipynb files with create_document. Use create_notebook tool instead.",
+        );
       }
 
       const init: RequestInit = {

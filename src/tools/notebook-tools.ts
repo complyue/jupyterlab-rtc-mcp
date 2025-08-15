@@ -436,6 +436,88 @@ export class NotebookTools {
   }
 
   /**
+   * Create a new empty notebook in JupyterLab
+   * @param path Path for the new notebook file (should end with .ipynb)
+   * @returns MCP response indicating success
+   */
+  async createNotebook(path: string): Promise<CallToolResult> {
+    try {
+      const { ServerConnection } = await import("@jupyterlab/services");
+      const { URLExt } = await import("@jupyterlab/coreutils");
+
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter["baseUrl"],
+      });
+      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+
+      // Validate that the path ends with .ipynb
+      if (!path.toLowerCase().endsWith(".ipynb")) {
+        throw new Error("Notebook file path must end with .ipynb extension");
+      }
+
+      // Create an empty notebook structure
+      const requestBody = {
+        type: "notebook",
+        content: {
+          cells: [],
+          metadata: {},
+          nbformat: 4,
+          nbformat_minor: 5,
+        },
+        format: "json",
+      };
+
+      const init: RequestInit = {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      };
+
+      // Add authorization header if token is provided
+      const token = process.env.JUPYTERLAB_TOKEN;
+      if (token) {
+        init.headers = {
+          ...init.headers,
+          Authorization: `token ${token}`,
+        };
+      }
+
+      const response = await ServerConnection.makeRequest(url, init, settings);
+
+      if (!response.ok) {
+        // Try to get more error details from the response body
+        let errorDetails = "";
+        try {
+          const errorResponse = await response.text();
+          errorDetails = ` - Response body: ${errorResponse}`;
+        } catch {
+          errorDetails = " - Could not read response body";
+        }
+
+        throw new Error(
+          `Server returned ${response.status}: ${response.statusText}${errorDetails}`,
+        );
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Successfully created empty notebook at ${path}`,
+          },
+        ],
+      };
+    } catch (error) {
+      logger.error("Failed to create notebook:", error);
+      throw new Error(
+        `Failed to create notebook: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
    * Insert multiple cells at specified location, execute them if not disabled
    * @param path Path to the notebook file
    * @param position Position to insert the cells
