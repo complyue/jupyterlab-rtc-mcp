@@ -118,7 +118,7 @@ export class JupyterLabMCPServer {
     // Tool to read notebook cells
     this.server.tool(
       "read_nb_cells",
-      "Read multiple cells by specifying ranges",
+      "Read multiple cells by specifying ranges with formal output schema and truncation support",
       {
         path: z.string().describe("Path to the notebook file"),
         ranges: z
@@ -133,9 +133,19 @@ export class JupyterLabMCPServer {
           )
           .optional()
           .describe("Array of cell ranges to read"),
+        max_cell_data: z
+          .number()
+          .default(2048)
+          .describe(
+            "Maximum size in characters for cell source and output data (default: 2048)",
+          ),
       },
-      async ({ path, ranges }) => {
-        return await this.notebookTools.readNotebookCells(path, ranges);
+      async ({ path, ranges, max_cell_data }) => {
+        return await this.notebookTools.readNotebookCells(
+          path,
+          ranges,
+          max_cell_data,
+        );
       },
     );
 

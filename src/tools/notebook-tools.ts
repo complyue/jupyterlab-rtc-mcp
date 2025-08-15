@@ -11,6 +11,11 @@ import {
   CellModification,
   CellInsertion,
   KernelInfo,
+  CellData,
+  CellOutput,
+  CellOutputData,
+  CellOutputError,
+  ReadNotebookCellsResult,
 } from "../jupyter/types.js";
 import { YCodeCell } from "@jupyter/ydoc";
 
@@ -301,14 +306,149 @@ export class NotebookTools {
   }
 
   /**
-   * Read multiple cells by specifying ranges
+   * Helper function to truncate text if it exceeds max length
+   * @param text Text to truncate
+   * @param maxLength Maximum length
+   * @returns Object with truncated text and flag indicating if truncation occurred
+   */
+  private _truncateText(
+    text: string,
+    maxLength: number,
+  ): { text: string; truncated: boolean } {
+    if (text.length <= maxLength) {
+      return { text, truncated: false };
+    }
+    return {
+      text: text.substring(0, maxLength) + "... [truncated]",
+      truncated: true,
+    };
+  }
+
+  /**
+   * Helper function to process cell outputs with truncation
+   * @param outputs Cell outputs to process
+   * @param maxCellData Maximum data size
+   * @returns Processed outputs with truncation info
+   */
+  private _processCellOutputs(
+    outputs: unknown[],
+    maxCellData: number,
+  ): { outputs: CellOutput[]; truncated: boolean[] } {
+    const processedOutputs: CellOutput[] = [];
+    const truncated: boolean[] = [];
+
+    for (const output of outputs) {
+      const typedOutput = output as {
+        output_type?: string;
+        metadata?: Record<string, unknown>;
+        execution_count?: number;
+        data?: Record<string, unknown>;
+        ename?: string;
+        evalue?: string;
+        traceback?: string[];
+        text?: string;
+      };
+      if (
+        typedOutput.output_type === "execute_result" ||
+        typedOutput.output_type === "display_data"
+      ) {
+        // Process data outputs
+        const dataOutput: CellOutputData = {
+          data: {},
+          metadata: typedOutput.metadata || {},
+          execution_count: typedOutput.execution_count,
+        };
+
+        // Process each data field (e.g., text/plain, image/png, etc.)
+        for (const [mimeType, value] of Object.entries(
+          typedOutput.data || {},
+        )) {
+          if (typeof value === "string") {
+            const result = this._truncateText(value, maxCellData);
+            dataOutput.data[mimeType] = result.text;
+            if (result.truncated) {
+              truncated.push(true);
+            } else {
+              truncated.push(false);
+            }
+          } else {
+            // For non-string data, keep as is
+            dataOutput.data[mimeType] = value;
+            truncated.push(false);
+          }
+        }
+
+        processedOutputs.push(dataOutput);
+      } else if (typedOutput.output_type === "error") {
+        // Process error outputs
+        const errorOutput: CellOutputError = {
+          name: typedOutput.ename || "Error",
+          value: typedOutput.evalue || "",
+          traceback: typedOutput.traceback || [],
+        };
+
+        // Truncate error values if they're too long
+        const valueResult = this._truncateText(errorOutput.value, maxCellData);
+        errorOutput.value = valueResult.text;
+        if (valueResult.truncated) {
+          truncated.push(true);
+        } else {
+          truncated.push(false);
+        }
+
+        // Truncate traceback if it's too long
+        const processedTraceback: string[] = [];
+        let tracebackTruncated = false;
+        for (const line of errorOutput.traceback) {
+          const result = this._truncateText(line, maxCellData);
+          processedTraceback.push(result.text);
+          if (result.truncated) {
+            tracebackTruncated = true;
+          }
+        }
+        errorOutput.traceback = processedTraceback;
+        if (tracebackTruncated) {
+          truncated.push(true);
+        }
+
+        processedOutputs.push(errorOutput);
+      } else if (typedOutput.output_type === "stream") {
+        // Process stream outputs
+        const streamOutput: CellOutputData = {
+          data: {
+            "text/plain": typedOutput.text || "",
+          },
+          metadata: {},
+        };
+
+        const result = this._truncateText(
+          String(streamOutput.data["text/plain"]),
+          maxCellData,
+        );
+        streamOutput.data["text/plain"] = result.text;
+        truncated.push(result.truncated);
+
+        processedOutputs.push(streamOutput);
+      } else {
+        // Unknown output type, skip
+        truncated.push(false);
+      }
+    }
+
+    return { outputs: processedOutputs, truncated };
+  }
+
+  /**
+   * Read multiple cells by specifying ranges with formal output schema and truncation support
    * @param path Path to the notebook file
    * @param ranges Array of cell ranges to read
-   * @returns MCP response with cell content
+   * @param maxCellData Maximum size in characters for cell source and output data (default: 2048)
+   * @returns MCP response with formal cell data schema
    */
   async readNotebookCells(
     path: string,
     ranges?: Array<CellRange>,
+    maxCellData: number = 2048,
   ): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
@@ -329,7 +469,9 @@ export class NotebookTools {
       ];
 
       // Extract cells based on ranges
-      const cells = [];
+      const cells: CellData[] = [];
+      let anyTruncated = false;
+
       for (const range of cellRanges) {
         const start = Math.max(0, range.start);
         const end = Math.min(
@@ -338,16 +480,92 @@ export class NotebookTools {
         );
 
         for (let i = start; i < end; i++) {
-          const cell = notebookContent.cells[i];
-          cells.push({ index: i, cell });
+          const rawCell = notebookContent.cells[i];
+
+          // Process cell source with truncation
+          const sourceResult = this._truncateText(
+            Array.isArray(rawCell.source)
+              ? rawCell.source.join("")
+              : rawCell.source || "",
+            maxCellData,
+          );
+
+          // Create formal cell data structure
+          const cellData: CellData = {
+            index: i,
+            id: String(rawCell.id || `cell-${i}`),
+            cell_type: rawCell.cell_type as "code" | "markdown" | "raw",
+            source: sourceResult.text,
+            metadata: rawCell.metadata || {},
+          };
+
+          // Add truncation info for source
+          if (sourceResult.truncated) {
+            cellData.truncated = {
+              source: true,
+            };
+            anyTruncated = true;
+          } else {
+            cellData.truncated = {
+              source: false,
+            };
+          }
+
+          // Add code cell specific fields
+          if (rawCell.cell_type === "code") {
+            if (
+              rawCell.execution_count !== null &&
+              rawCell.execution_count !== undefined
+            ) {
+              cellData.execution_count = Number(rawCell.execution_count);
+            }
+
+            // Process outputs if they exist
+            if (
+              rawCell.outputs &&
+              Array.isArray(rawCell.outputs) &&
+              rawCell.outputs.length > 0
+            ) {
+              const { outputs: processedOutputs, truncated: outputsTruncated } =
+                this._processCellOutputs(
+                  rawCell.outputs as unknown[],
+                  maxCellData,
+                );
+              cellData.outputs = processedOutputs;
+
+              // Update truncation info for outputs
+              if (cellData.truncated) {
+                cellData.truncated.outputs = outputsTruncated;
+              } else {
+                cellData.truncated = {
+                  source: false,
+                  outputs: outputsTruncated,
+                };
+              }
+
+              if (outputsTruncated.some((truncated) => truncated)) {
+                anyTruncated = true;
+              }
+            }
+          }
+
+          cells.push(cellData);
         }
       }
+
+      // Create formal response
+      const result: ReadNotebookCellsResult = {
+        path,
+        cells,
+        truncated: anyTruncated,
+        max_cell_data: maxCellData,
+      };
 
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ cells }, null, 2),
+            text: JSON.stringify(result, null, 2),
           },
         ],
       };
