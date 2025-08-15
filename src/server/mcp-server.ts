@@ -38,14 +38,6 @@ export class JupyterLabMCPServer {
     this.notebookTools = new NotebookTools(this.jupyterAdapter);
     this.documentTools = new DocumentTools(this.jupyterAdapter);
 
-    // Register tools using the idiomatic server.tool() method
-    this.registerTools();
-  }
-
-  /**
-   * Register all tools using the idiomatic server.tool() method
-   */
-  private registerTools(): void {
     // Notebook Operation Tools
     this.registerNotebookTools();
 
