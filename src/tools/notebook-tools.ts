@@ -441,6 +441,12 @@ export class NotebookTools {
     exec?: boolean,
   ): Promise<CallToolResult> {
     try {
+      // Convert CellInsertion objects to the format expected by insertCells
+      const cellsToInsert = cells.map((cell) => ({
+        cell_type: cell.type || "code", // Default to "code" if type is not specified
+        source: cell.content,
+      }));
+
       // Create or get existing notebook session
       const nbSession = await this.jupyterAdapter.createNotebookSession(path);
 
@@ -451,8 +457,17 @@ export class NotebookTools {
       const cells2exec: YCodeCell[] = [];
 
       ynb.transact(() => {
-        // TODO: use bulk insertion api to insert cells, push resulted new code cells into cells2exec
-        ynb.insertCells(position, []);
+        // Use bulk insertion API to insert cells
+        ynb.insertCells(position, cellsToInsert);
+
+        // Get the actual inserted cells from the ynb.cells array
+        for (let i = 0; i < cellsToInsert.length; i++) {
+          const cellIndex = position + i;
+          const cell = ynb.cells[cellIndex];
+          if (cell && cell.cell_type === "code") {
+            cells2exec.push(cell as YCodeCell);
+          }
+        }
       });
 
       // Execute cells if requested
@@ -507,13 +522,23 @@ export class NotebookTools {
       // Process ranges in reverse order to avoid index shifting when deleting cells
       const sortedRanges = [...ranges].sort((a, b) => b.start - a.start);
 
+      let deletedCells = 0;
       ynb.transact(() => {
-        // TODO: the correct logic must consider overlapping of ranges, as well as index shift
-        //       after previous range has been deleted, non-1st range must be adjusted accordingly
+        // Process each range, adjusting indices based on previously deleted cells
         for (const range of sortedRanges) {
-          const start = Math.max(0, range.start);
-          const end = Math.min(ynb.cells.length, range.end || ynb.cells.length);
-          ynb.deleteCellRange(start, end);
+          // Adjust start and end based on number of cells already deleted
+          const adjustedStart = Math.max(0, range.start - deletedCells);
+          const adjustedEnd = Math.min(
+            ynb.cells.length,
+            (range.end || ynb.cells.length) - deletedCells,
+          );
+
+          // Only delete if we have a valid range
+          const cellsToDelete = adjustedEnd - adjustedStart;
+          if (cellsToDelete >= 1) {
+            ynb.deleteCellRange(adjustedStart, adjustedEnd);
+            deletedCells += cellsToDelete;
+          }
         }
       });
 
@@ -523,7 +548,7 @@ export class NotebookTools {
             type: "text",
             text: JSON.stringify(
               {
-                message: `Successfully deleted cells`,
+                message: `Successfully deleted ${deletedCells} cells`,
               },
               null,
               2,
