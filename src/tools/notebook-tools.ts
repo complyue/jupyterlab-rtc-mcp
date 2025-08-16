@@ -177,6 +177,10 @@ export class NotebookTools {
               notebooks.push(...this._extractNotebooks(item));
             }
           } else if (item.type === "notebook") {
+            // Construct the full URL for the notebook
+            const baseUrl = this.jupyterAdapter["baseUrl"];
+            const notebookUrl = `${baseUrl}/notebooks/${item.path}`;
+
             notebooks.push({
               path: item.path,
               name: item.name,
@@ -184,12 +188,16 @@ export class NotebookTools {
               created: item.created,
               size: item.size,
               writable: item.writable,
+              url: notebookUrl,
             });
           }
         }
       }
     } else if (contents.type === "notebook") {
       // Single notebook file
+      const baseUrl = this.jupyterAdapter["baseUrl"];
+      const notebookUrl = `${baseUrl}/notebooks/${contents.path}`;
+
       notebooks.push({
         path: contents.path,
         name: contents.name,
@@ -197,6 +205,7 @@ export class NotebookTools {
         created: contents.created,
         size: contents.size,
         writable: contents.writable,
+        url: notebookUrl,
       });
     }
 

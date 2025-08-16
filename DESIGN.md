@@ -67,6 +67,10 @@ A JSON array of notebook objects with properties:
 - `path`: Full path to the notebook file
 - `name`: Filename of the notebook
 - `last_modified`: ISO timestamp of last modification
+- `created`: ISO timestamp of creation
+- `size`: File size in bytes
+- `writable`: Whether the notebook is writable
+- `url`: Full URL to access the notebook in JupyterLab
 
 **Example:**
 ```json
@@ -75,11 +79,17 @@ A JSON array of notebook objects with properties:
     {
       "path": "/example/notebook1.ipynb",
       "name": "notebook1.ipynb",
-      "last_modified": "2023-01-01T12:00:00Z"
+      "last_modified": "2023-01-01T12:00:00Z",
+      "created": "2023-01-01T10:00:00Z",
+      "size": 1024,
+      "writable": true,
+      "url": "http://localhost:8888/notebooks/example/notebook1.ipynb"
     }
   ]
 }
 ```
+
+**Note:** The URL field provides direct links to notebooks in JupyterLab using the `/notebooks/` path pattern.
 
 #### get_nb_stat
 Get status information about a notebook, including cell count and kernel information.
@@ -331,6 +341,7 @@ A JSON array of document objects with properties:
 - `last_modified`: ISO timestamp of last modification
 - `size`: File size in bytes
 - `writable`: Whether the document is writable
+- `url`: Full URL to access the document in JupyterLab
 
 **Example:**
 ```json
@@ -342,10 +353,16 @@ A JSON array of document objects with properties:
     "created": "2023-01-01T10:00:00Z",
     "last_modified": "2023-01-01T12:00:00Z",
     "size": 1024,
-    "writable": true
+    "writable": true,
+    "url": "http://localhost:8888/edit/example/document.md"
   }
 ]
 ```
+
+**Note:** The URL field provides direct links to documents in JupyterLab, with different URL patterns based on document type:
+- Notebooks: `/notebooks/path/to/notebook.ipynb`
+- Files: `/edit/path/to/file.ext`
+- Directories: `/tree/path/to/directory`
 
 #### create_document
 Create a new document in JupyterLab.
@@ -379,6 +396,7 @@ A multi-message response with document information:
    - `size`: File size in bytes
    - `writable`: Whether the document is writable
    - `mimetype`: MIME type of the document
+   - `url`: Full URL to access the document in JupyterLab
 
 2. **Second message** (if include_content is true): Content information as JSON
    - `content_length`: Length of the content
@@ -397,9 +415,15 @@ A multi-message response with document information:
   "last_modified": "2023-01-01T12:00:00Z",
   "size": 17,
   "writable": true,
-  "mimetype": "text/markdown"
+  "mimetype": "text/markdown",
+  "url": "http://localhost:8888/edit/example/document.md"
 }
 ```
+
+**Note:** The URL field provides direct links to documents in JupyterLab, with different URL patterns based on document type:
+- Notebooks: `/notebooks/path/to/notebook.ipynb`
+- Files: `/edit/path/to/file.ext`
+- Directories: `/tree/path/to/directory`
 
 **Example** (with content):
 Message 1:

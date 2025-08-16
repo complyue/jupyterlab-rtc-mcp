@@ -15,12 +15,14 @@ This MCP server supports both stdio and HTTP transport for communication with AI
 The server supports two transport modes:
 
 ### 1. Stdio Transport (Production)
+
 - **Default mode** for production use
 - Communicates via standard input/output
 - Ideal for integration with AI agents
 - Command: `npx jupyterlab-rtc-mcp`
 
 ### 2. HTTP Transport (Debugging)
+
 - **Debug mode** for development and testing
 - Provides HTTP endpoint with streamable JSON responses
 - Useful for debugging and manual testing
@@ -28,6 +30,7 @@ The server supports two transport modes:
 
 ## Features
 
+- **URL Integration**: Human users can mention JupyterLab notebook/document URLs for AI agents to convert to paths and initiate RTC; All document and notebook listings include direct URLs, AI agents can show specific URLs for human users to launch with browser by clicking them, to initiate RTC
 - **Real-time Collaboration**: AI agents can modify notebooks while users see changes instantly
 - **Multiple Document Types**: Support for notebooks, markdown/text files, and other JupyterLab document types
 - **Kernel Information**: See kernel associated with notebooks, advice the user for proper kernel selection
@@ -144,12 +147,14 @@ export LOG_LEVEL=info
 The MCP server provides the following categories of tools:
 
 ### RTC Session Management
+
 - **end_nb_session**: End a real-time collaboration session for a notebook
 - **query_nb_sessions**: Query the status of real-time collaboration sessions for notebooks in a directory
 - **Automatic Timeout**: Sessions are automatically terminated after a period of inactivity (configurable via command line)
 
 ### Notebook Operations
-- **list_nbs**: List all notebook files under a specified directory
+
+- **list_nbs**: List all notebook files under a specified directory, including URLs for direct access
 - **get_nb_stat**: Get status information about a notebook, including cell count and kernel information
 - **read_nb_cells**: Read multiple cells by specifying ranges
 - **modify_nb_cells**: Modify multiple cells by specifying ranges, with optional execution
@@ -161,15 +166,17 @@ The MCP server provides the following categories of tools:
 - **assign_nb_kernel**: Assign a specific kernel to a notebook
 
 ### Document Management
-- **list_documents**: List available documents in JupyterLab from a specified path
+
+- **list_documents**: List available documents in JupyterLab from a specified path, including URLs for direct access
 - **create_document**: Create a new document in JupyterLab
-- **get_document_info**: Get information about a document
+- **get_document_info**: Get information about a document, including URL for direct access
 - **delete_document**: Delete a document in JupyterLab
 - **rename_document**: Rename a document in JupyterLab
 - **copy_document**: Copy a document in JupyterLab
 - **overwrite_document**: Overwrite the entire content of a document
 
 ### RTC Document Operations
+
 - **get_document_content**: Get document content using real-time collaboration with truncation support
 - **insert_document_text**: Insert text at a specific position in a document using real-time collaboration
 - **delete_document_text**: Delete text from a specific position in a document using real-time collaboration
@@ -178,7 +185,6 @@ The MCP server provides the following categories of tools:
 - **query_document_session**: Query the status of a real-time collaboration session for a document
 
 For detailed specifications of each tool, including parameters, return values, and examples, please refer to [DESIGN.md](DESIGN.md).
-
 
 ## Development
 
@@ -263,6 +269,7 @@ npx @modelcontextprotocol/inspector
 ```
 
 When prompted, configure the inspector to connect to your HTTP endpoint:
+
 - Transport: HTTP
 - URL: http://localhost:3000/mcp
 
@@ -275,17 +282,14 @@ To use the HTTP transport with MCP clients, configure the client with streamable
   "mcpServers": {
     "jupyterlab": {
       "type": "streamable-http",
-      "url": "http://localhost:3000/mcp",
-      "alwaysAllow": [
-        "list_nbs",
-        "list_documents"
-      ]
+      "url": "http://localhost:3000/mcp"
     }
   }
 }
 ```
 
 Example debugging session:
+
 ```bash
 # Set environment variables
 export JUPYTERLAB_URL=http://localhost:8888

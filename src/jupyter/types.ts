@@ -18,6 +18,20 @@ export interface NotebookInfo {
   created?: string;
   size?: number;
   writable?: boolean;
+  url?: string;
+}
+
+export interface DocumentInfo {
+  name: string;
+  path: string;
+  type: "file" | "directory" | "notebook";
+  created?: string;
+  last_modified?: string;
+  size?: number;
+  writable?: boolean;
+  mimetype?: string;
+  format?: string;
+  url?: string;
 }
 
 export interface CellRange {

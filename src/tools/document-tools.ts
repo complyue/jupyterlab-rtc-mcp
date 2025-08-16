@@ -3,6 +3,7 @@ import { ServerConnection } from "@jupyterlab/services";
 import { URLExt } from "@jupyterlab/coreutils";
 import { logger } from "../utils/logger.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { DocumentInfo } from "../jupyter/types.js";
 
 /**
  * DocumentTools provides high-level operations for document management
@@ -56,6 +57,7 @@ export class DocumentTools {
       }
 
       const data = await response.json();
+      const baseUrl = this.jupyterAdapter["baseUrl"];
 
       // Format the response to include only relevant information
       const documents = data.content.map(
@@ -67,15 +69,29 @@ export class DocumentTools {
           last_modified: string;
           size: number;
           writable: boolean;
-        }) => ({
-          name: item.name,
-          path: item.path,
-          type: item.type,
-          created: item.created,
-          last_modified: item.last_modified,
-          size: item.size,
-          writable: item.writable,
-        }),
+        }) => {
+          // Construct the URL based on the item type
+          let itemUrl: string;
+          if (item.type === "notebook") {
+            itemUrl = `${baseUrl}/notebooks/${item.path}`;
+          } else if (item.type === "file") {
+            itemUrl = `${baseUrl}/edit/${item.path}`;
+          } else {
+            // For directories
+            itemUrl = `${baseUrl}/tree/${item.path}`;
+          }
+
+          return {
+            name: item.name,
+            path: item.path,
+            type: item.type,
+            created: item.created,
+            last_modified: item.last_modified,
+            size: item.size,
+            writable: item.writable,
+            url: itemUrl,
+          };
+        },
       );
 
       return {
@@ -236,9 +252,21 @@ export class DocumentTools {
       }
 
       const data = await response.json();
+      const baseUrl = this.jupyterAdapter["baseUrl"];
+
+      // Construct the URL based on the item type
+      let itemUrl: string;
+      if (data.type === "notebook") {
+        itemUrl = `${baseUrl}/notebooks/${data.path}`;
+      } else if (data.type === "file") {
+        itemUrl = `${baseUrl}/edit/${data.path}`;
+      } else {
+        // For directories
+        itemUrl = `${baseUrl}/tree/${data.path}`;
+      }
 
       // Format the response to include only relevant information
-      const documentInfo = {
+      const documentInfo: DocumentInfo = {
         name: data.name,
         path: data.path,
         type: data.type,
@@ -248,6 +276,7 @@ export class DocumentTools {
         writable: data.writable,
         mimetype: data.mimetype,
         format: data.format,
+        url: itemUrl,
       };
 
       // Build the content array with proper typing

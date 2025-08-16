@@ -22,7 +22,8 @@ jupyterlab-rtc-mcp/
 │   │   └── notebook-session.ts  # Notebook session management
 │   ├── tools/
 │   │   ├── notebook-tools.ts    # Notebook operation tools
-│   │   └── document-tools.ts    # Document management tools
+│   │   ├── document-tools.ts    # Document management tools
+│   │   └── url-tools.ts         # URL handling tools
 │   └── utils/
 │       └── logger.ts           # Logging utility
 ├── package.json                 # Project dependencies and scripts
@@ -40,7 +41,7 @@ jupyterlab-rtc-mcp/
 
 3. **Transport Layer** (`src/server/transport/`): Supports both HTTP and stdio transports for communication with AI agents.
 
-4. **Tools Implementation** (`src/tools/`): Provides high-level operations for notebook and document management.
+4. **Tools Implementation** (`src/tools/`): Provides high-level operations for notebook, document, and URL management.
 
 ## Build, Test, and Development Commands
 
@@ -107,11 +108,12 @@ The server integrates with JupyterLab's RTC infrastructure through several key c
 
 ### Tool Architecture
 
-The server provides tools organized into three categories:
+The server provides tools organized into four categories:
 
-1. **RTC Session Management**: Tools for ending and querying notebook sessions (sessions are created implicitly)
-2. **Notebook Operations**: Tools for reading, modifying, inserting, deleting cells, and managing kernels
-3. **Document Management**: Tools for creating, listing, and managing documents in JupyterLab
+1. **URL Tools**: Tools for handling JupyterLab URLs, including extracting paths from human provided URLs, and constructing URLs for human users to open with browser, to establish RTC by AI agents and human users
+2. **Notebook Operations**: Tools for reading, modifying, inserting, deleting cells, and managing kernels by AI agents
+3. **Document Management**: Tools for creating, listing, and managing documents in JupyterLab, and RTC edits by AI agents
+4. **RTC Session Management**: Tools for querying and explicitly ending notebook/document sessions (sessions are created implicitly)
 
 ### Design Patterns
 
@@ -186,6 +188,7 @@ To use the MCP server with an AI agent, configure the agent to use the server as
 4. **Build Errors**: Ensure all dependencies are installed and TypeScript configuration is correct
 
 ### Debugging
+
 - Check console logs for detailed error information
 - Use browser developer tools to inspect network traffic
 - Verify JupyterLab RTC endpoints are accessible
