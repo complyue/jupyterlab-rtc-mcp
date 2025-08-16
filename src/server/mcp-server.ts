@@ -206,12 +206,19 @@ export class JupyterLabMCPServer {
           .boolean()
           .default(true)
           .describe("Whether to execute the modified cells"),
+        max_cell_output_size: z
+          .number()
+          .default(2000)
+          .describe(
+            "Maximum size in characters for cell output data when executing cells (default: 2000)",
+          ),
       },
-      async ({ path, modifications, exec }) => {
+      async ({ path, modifications, exec, max_cell_output_size }) => {
         return await this.notebookTools.modifyNotebookCells(
           path,
           modifications,
           exec,
+          max_cell_output_size,
         );
       },
     );
@@ -238,13 +245,20 @@ export class JupyterLabMCPServer {
           .boolean()
           .default(true)
           .describe("Whether to execute the inserted cells"),
+        max_cell_output_size: z
+          .number()
+          .default(2000)
+          .describe(
+            "Maximum size in characters for cell output data when executing cells (default: 2000)",
+          ),
       },
-      async ({ path, position, cells, exec }) => {
+      async ({ path, position, cells, exec, max_cell_output_size }) => {
         return await this.notebookTools.insertNotebookCells(
           path,
           position,
           cells,
           exec,
+          max_cell_output_size,
         );
       },
     );
@@ -289,9 +303,19 @@ export class JupyterLabMCPServer {
             }),
           )
           .describe("Array of cell ranges to execute"),
+        max_cell_output_size: z
+          .number()
+          .default(2000)
+          .describe(
+            "Maximum size in characters for cell output data when executing cells (default: 2000)",
+          ),
       },
-      async ({ path, ranges }) => {
-        return await this.notebookTools.executeNotebookCells(path, ranges);
+      async ({ path, ranges, max_cell_output_size }) => {
+        return await this.notebookTools.executeNotebookCells(
+          path,
+          ranges,
+          max_cell_output_size,
+        );
       },
     );
 

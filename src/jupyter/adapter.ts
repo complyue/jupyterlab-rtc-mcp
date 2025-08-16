@@ -795,16 +795,18 @@ export class JupyterLabAdapter {
 }
 
 /**
- * Execute code cell with a kernel connection, update its outputs
+ * Execute code cell with a kernel connection, update its outputs and return output data
  *
  * @param cell The YCodeCell to execute
  * @param kernelConn The kernel connection
- * @returns Promise that resolves when execution is complete
+ * @param maxOutputSize Maximum size in characters for output data (default: 2000)
+ * @returns Promise that resolves with cell output data when execution is complete
  */
 export async function executeJupyterCell(
   cell: YCodeCell,
   kernelConn: IKernelConnection,
-): Promise<void> {
+  maxOutputSize: number = 2000,
+): Promise<{ outputs: IOutput[]; truncated: boolean; originalSize?: number }> {
   logger.debug(`Executing cell with source: ${cell.source}`);
 
   // Clear any existing outputs
@@ -894,6 +896,15 @@ export async function executeJupyterCell(
     await future.done;
 
     logger.debug("Cell execution completed successfully");
+
+    // Process outputs with truncation
+    const {
+      outputs: processedOutputs,
+      truncated,
+      originalSize,
+    } = processCellOutputsWithTruncation(outputs, maxOutputSize);
+
+    return { outputs: processedOutputs, truncated, originalSize };
   } catch (error) {
     logger.error("Error executing cell:", error);
 
@@ -906,9 +917,139 @@ export async function executeJupyterCell(
     };
 
     cell.setOutputs([errorOutput]);
-    throw error;
+
+    // Process error output with truncation
+    const {
+      outputs: processedOutputs,
+      truncated,
+      originalSize,
+    } = processCellOutputsWithTruncation([errorOutput], maxOutputSize);
+
+    return { outputs: processedOutputs, truncated, originalSize };
   } finally {
     // restore idle state
     cell.executionState = "idle";
   }
+}
+
+/**
+ * Helper function to process cell outputs with truncation
+ * @param outputs Cell outputs to process
+ * @param maxOutputSize Maximum size in characters for output data
+ * @returns Processed outputs with truncation info and original size
+ */
+function processCellOutputsWithTruncation(
+  outputs: IOutput[],
+  maxOutputSize: number,
+): { outputs: IOutput[]; truncated: boolean; originalSize?: number } {
+  const processedOutputs: IOutput[] = [];
+  let anyTruncated = false;
+  let totalOriginalSize = 0;
+
+  for (const output of outputs) {
+    if (
+      output.output_type === "execute_result" ||
+      output.output_type === "display_data"
+    ) {
+      // Process data outputs
+      const processedOutput: IOutput = {
+        output_type: output.output_type,
+        execution_count: output.execution_count,
+        data: {},
+        metadata: output.metadata || {},
+      };
+
+      // Process each data field (e.g., text/plain, image/png, etc.)
+      const data = output.data || {};
+      for (const [mimeType, value] of Object.entries(data)) {
+        if (typeof value === "string") {
+          totalOriginalSize += value.length;
+          if (value.length > maxOutputSize) {
+            (processedOutput.data as Record<string, unknown>)[mimeType] =
+              value.substring(0, maxOutputSize) + "... [truncated]";
+            anyTruncated = true;
+          } else {
+            (processedOutput.data as Record<string, unknown>)[mimeType] = value;
+          }
+        } else {
+          // For non-string data, keep as is
+          (processedOutput.data as Record<string, unknown>)[mimeType] = value;
+        }
+      }
+
+      processedOutputs.push(processedOutput);
+    } else if (output.output_type === "error") {
+      // Process error outputs
+      const processedOutput: IOutput = {
+        output_type: "error",
+        ename: output.ename,
+        evalue: output.evalue,
+        traceback: output.traceback,
+      };
+
+      // Truncate error value if it's too long
+      if (
+        typeof processedOutput.evalue === "string" &&
+        processedOutput.evalue.length > maxOutputSize
+      ) {
+        totalOriginalSize += processedOutput.evalue.length;
+        processedOutput.evalue =
+          processedOutput.evalue.substring(0, maxOutputSize) +
+          "... [truncated]";
+        anyTruncated = true;
+      }
+
+      // Truncate traceback if it's too long
+      if (
+        processedOutput.traceback &&
+        Array.isArray(processedOutput.traceback)
+      ) {
+        const processedTraceback: string[] = [];
+        for (const line of processedOutput.traceback) {
+          if (typeof line === "string" && line.length > maxOutputSize) {
+            totalOriginalSize += line.length;
+            processedTraceback.push(
+              line.substring(0, maxOutputSize) + "... [truncated]",
+            );
+            anyTruncated = true;
+          } else if (typeof line === "string") {
+            totalOriginalSize += line.length;
+            processedTraceback.push(line);
+          }
+        }
+        processedOutput.traceback = processedTraceback;
+      }
+
+      processedOutputs.push(processedOutput);
+    } else if (output.output_type === "stream") {
+      // Process stream outputs
+      const processedOutput: IOutput = {
+        output_type: "stream",
+        name: output.name,
+        text: output.text,
+      };
+
+      // Truncate stream text if it's too long
+      if (
+        typeof processedOutput.text === "string" &&
+        processedOutput.text.length > maxOutputSize
+      ) {
+        totalOriginalSize += processedOutput.text.length;
+        processedOutput.text =
+          processedOutput.text.substring(0, maxOutputSize) + "... [truncated]";
+        anyTruncated = true;
+      }
+
+      processedOutputs.push(processedOutput);
+    } else {
+      // Unknown output type, keep as is
+      processedOutputs.push(output);
+    }
+  }
+
+  return {
+    outputs: processedOutputs,
+    truncated: anyTruncated,
+    originalSize: anyTruncated ? totalOriginalSize : undefined,
+  };
 }

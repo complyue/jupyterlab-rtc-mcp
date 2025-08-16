@@ -1,4 +1,6 @@
 // Type definitions for JupyterLab API responses
+import { IOutput } from "@jupyterlab/nbformat";
+
 export interface JupyterContent {
   name: string;
   path: string;
@@ -101,4 +103,11 @@ export interface ReadNotebookCellsResult {
   cells: CellData[];
   truncated?: boolean;
   max_cell_data?: number;
+}
+
+// Response schema for cell execution
+export interface CellExecutionResult {
+  outputs: IOutput[];
+  truncated: boolean;
+  original_size?: number;
 }

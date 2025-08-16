@@ -16,6 +16,7 @@ import {
   CellOutputData,
   CellOutputError,
   ReadNotebookCellsResult,
+  CellExecutionResult,
 } from "../jupyter/types.js";
 import { YCodeCell } from "@jupyter/ydoc";
 
@@ -591,12 +592,14 @@ export class NotebookTools {
    * @param path Path to the notebook file
    * @param modifications Array of cell modifications
    * @param exec Whether to execute the modified cells
-   * @returns MCP response indicating success
+   * @param maxCellOutputSize Maximum size in characters for cell output data (default: 2000)
+   * @returns MCP response with execution results if cells were executed
    */
   async modifyNotebookCells(
     path: string,
     modifications: Array<CellModification>,
     exec?: boolean,
+    maxCellOutputSize: number = 2000,
   ): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
@@ -631,10 +634,20 @@ export class NotebookTools {
       });
 
       // Execute cells if requested
+      let executionResults: CellExecutionResult[] = [];
       if (exec !== false) {
         const kernelConn = await nbSession.ensureKernelConnection();
         for (const cell of cells2exec) {
-          await executeJupyterCell(cell, kernelConn);
+          const result = await executeJupyterCell(
+            cell,
+            kernelConn,
+            maxCellOutputSize,
+          );
+          executionResults.push({
+            outputs: result.outputs,
+            truncated: result.truncated,
+            original_size: result.originalSize,
+          });
         }
       }
 
@@ -647,6 +660,8 @@ export class NotebookTools {
                 message: `Successfully modified ${modifications.length} cell ranges${exec !== false ? " and executed cells" : ""}`,
                 modified_ranges: modifications.length,
                 executed: exec !== false,
+                execution_results:
+                  exec !== false ? executionResults : undefined,
               },
               null,
               2,
@@ -750,13 +765,15 @@ export class NotebookTools {
    * @param position Position to insert the cells
    * @param cells Array of cells to insert
    * @param exec Whether to execute the inserted cells
-   * @returns MCP response with new cell IDs
+   * @param maxCellOutputSize Maximum size in characters for cell output data (default: 2000)
+   * @returns MCP response with execution results if cells were executed
    */
   async insertNotebookCells(
     path: string,
     position: number,
     cells: Array<CellInsertion>,
     exec?: boolean,
+    maxCellOutputSize: number = 2000,
   ): Promise<CallToolResult> {
     try {
       // Convert CellInsertion objects to the format expected by insertCells
@@ -792,10 +809,20 @@ export class NotebookTools {
       });
 
       // Execute cells if requested
+      let executionResults: CellExecutionResult[] = [];
       if (exec !== false) {
         const kernelConn = await nbSession.ensureKernelConnection();
         for (const cell of cells2exec) {
-          await executeJupyterCell(cell, kernelConn);
+          const result = await executeJupyterCell(
+            cell,
+            kernelConn,
+            maxCellOutputSize,
+          );
+          executionResults.push({
+            outputs: result.outputs,
+            truncated: result.truncated,
+            original_size: result.originalSize,
+          });
         }
       }
 
@@ -807,6 +834,8 @@ export class NotebookTools {
               {
                 message: `Successfully inserted cells`,
                 executed: exec !== false,
+                execution_results:
+                  exec !== false ? executionResults : undefined,
               },
               null,
               2,
@@ -1120,11 +1149,13 @@ export class NotebookTools {
    * Execute multiple cells by specifying ranges
    * @param path Path to the notebook file
    * @param ranges Array of cell ranges to execute
-   * @returns MCP response indicating success
+   * @param maxCellOutputSize Maximum size in characters for cell output data (default: 2000)
+   * @returns MCP response with execution results
    */
   async executeNotebookCells(
     path: string,
     ranges: Array<CellRange>,
+    maxCellOutputSize: number = 2000,
   ): Promise<CallToolResult> {
     try {
       // Create or get existing notebook session
@@ -1153,9 +1184,19 @@ export class NotebookTools {
         }
       }
 
-      // Execute all cells
+      // Execute all cells and collect results
+      const executionResults: CellExecutionResult[] = [];
       for (const cell of cellsToExecute) {
-        await executeJupyterCell(cell, kernelConn);
+        const result = await executeJupyterCell(
+          cell,
+          kernelConn,
+          maxCellOutputSize,
+        );
+        executionResults.push({
+          outputs: result.outputs,
+          truncated: result.truncated,
+          original_size: result.originalSize,
+        });
       }
 
       return {
@@ -1167,6 +1208,7 @@ export class NotebookTools {
                 message: `Successfully executed ${ranges.length} cell ranges`,
                 executed_ranges: ranges.length,
                 executed_cells: cellsToExecute.length,
+                execution_results: executionResults,
               },
               null,
               2,
