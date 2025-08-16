@@ -87,9 +87,16 @@ export class URLTools {
       // 2. /notebooks/path/to/notebook.ipynb
       // 3. /edit/path/to/notebook.ipynb
       // 4. /view/path/to/notebook.ipynb
+      // 5. /lab/tree/path/to/notebook.ipynb
 
       // Remove the prefix if it matches one of the known patterns
-      const knownPrefixes = ["tree/", "notebooks/", "edit/", "view/"];
+      const knownPrefixes = [
+        "tree/",
+        "notebooks/",
+        "edit/",
+        "view/",
+        "lab/tree/",
+      ];
       for (const prefix of knownPrefixes) {
         if (pathPart.startsWith(prefix)) {
           pathPart = pathPart.substring(prefix.length);
