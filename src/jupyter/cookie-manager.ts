@@ -5,7 +5,7 @@
 
 import { Cookie, CookieJar } from "tough-cookie";
 
-import { logger } from "../utils/logger";
+import { logger } from "../utils/logger.js";
 
 export class CookieManager {
   private cookies: CookieJar;
