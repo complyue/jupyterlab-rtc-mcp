@@ -41,6 +41,25 @@ The server supports two transport modes:
 - Node.js (v18 or higher)
 - npm or yarn
 - JupyterLab (with Python setup for it) with RTC enabled
+- [Jupyter Real-Time Collaboration](https://jupyterlab-realtime-collaboration.readthedocs.io)
+
+JupyterLab Real-Time Collaboration is a Jupyter Server Extension and JupyterLab extensions providing support for [Y documents](https://github.com/jupyter-server/jupyter_ydoc) and adding collaboration UI elements in JupyterLab.
+
+```bash
+pip install jupyter-collaboration
+```
+
+Or
+
+```bash
+conda install -c conda-forge jupyter-collaboration
+```
+
+Assuming your Jupyter Lab server is started with tooken auth:
+
+```bash
+jupyter lab --IdentityProvider.token=your-token-here
+```
 
 ## Usage
 
@@ -56,7 +75,7 @@ npx jupyterlab-rtc-mcp
 npx jupyterlab-rtc-mcp --transport http
 
 # Use HTTP transport on a specific port
-npx jupyterlab-rtc-mcp --transport http --port 8080
+npx jupyterlab-rtc-mcp --transport http --port 3080
 
 # Set session timeout (in minutes)
 npx jupyterlab-rtc-mcp --session-timeout 10
