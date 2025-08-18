@@ -12,7 +12,7 @@ import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { logger } from "../utils/logger.js";
 import { cookieManager } from "./cookie-manager.js";
 import { NotebookSession } from "./notebook-session.js";
-import { TextDocumentSession } from "./text-document-session.js";
+import { TextDocumentSession } from "./textdoc-session.js";
 
 export interface ISessionModel {
   format: string;
