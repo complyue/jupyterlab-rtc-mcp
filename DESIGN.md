@@ -1,13 +1,25 @@
 # JupyterLab RTC MCP Server - Detailed Tool Specifications
 
-This document contains detailed specifications for all tools available in the JupyterLab RTC MCP Server.
+This document contains detailed specifications for all tools available in the JupyterLab RTC MCP Server. The server provides a comprehensive set of tools for interacting with JupyterLab through the Model Context Protocol (MCP), enabling AI agents to perform operations on notebooks and documents with real-time collaboration capabilities.
 
-## Available Tools
+## Available Tools Overview
+
+The tools are organized into five main categories:
+
+1. **URL Tools**: Tools for handling JupyterLab URLs, extracting paths, and constructing URLs for access.
+2. **Notebook RTC Tools**: Tools for reading, modifying, and managing notebook cells and kernels with real-time collaboration.
+3. **Document RTC Tools**: Tools for real-time collaboration on document editing.
+4. **Document Management Tools**: Tools for basic document operations without real-time collaboration.
+5. **RTC Session Management Tools**: Tools for querying and managing real-time collaboration sessions.
+
+Each tool is designed to provide specific functionality while maintaining consistency in parameters, return values, and error handling.
 
 ### URL Tools
 
+The URL Tools category provides utilities for handling JupyterLab URLs, enabling AI agents to extract paths from URLs and construct URLs for accessing notebooks and documents. These tools are essential for navigating the JupyterLab environment and establishing proper connections for real-time collaboration.
+
 #### get_base_url
-Get the base URL of the JupyterLab server.
+Retrieves the base URL of the JupyterLab server for use in constructing full URLs and understanding the server context.
 
 **Parameters:**
 None
@@ -26,7 +38,7 @@ A JSON object with the base URL:
 **Note:** This tool is useful for AI agents to understand the server context and for constructing full URLs when needed.
 
 #### nb_path_from_url
-Extract the notebook path from a full JupyterLab URL with proper URL decoding.
+Extracts the notebook path from a full JupyterLab URL with proper URL decoding, enabling AI agents to identify notebook files from URLs.
 
 **Parameters:**
 - `url` (required): Full JupyterLab URL to a notebook
@@ -54,10 +66,19 @@ A JSON object with the extracted notebook path:
 
 **Note:** This tool handles URL decoding to properly extract notebook paths with special characters. It validates that the extracted path ends with `.ipynb` to ensure it's a notebook file.
 
-### Notebook Operations
+### Notebook RTC Tools
+
+The Notebook RTC Tools category provides comprehensive functionality for interacting with Jupyter notebooks through real-time collaboration. These tools enable AI agents to read, modify, insert, and delete notebook cells, as well as manage kernel operations. All operations are performed using JupyterLab's RTC infrastructure, ensuring that changes are immediately visible to all collaborators.
+
+Key features of these tools include:
+- Cell operations with optional execution
+- Kernel management and restart capabilities
+- Support for both code and markdown cells
+- Range-based operations for efficiency
+- Real-time synchronization with JupyterLab
 
 #### list_nbs
-List all notebook files under a specified directory, recursively.
+Lists all notebook files under a specified directory, recursively, providing comprehensive information about each notebook including metadata and access URLs.
 
 **Parameters:**
 - `path` (optional): Directory path to search for notebooks (default: root directory)
@@ -92,7 +113,7 @@ A JSON array of notebook objects with properties:
 **Note:** The URL field provides direct links to notebooks in JupyterLab using the `/notebooks/` path pattern.
 
 #### get_nb_stat
-Get status information about a notebook, including cell count and kernel information.
+Retrieves status information about a notebook, including cell count and kernel state, providing a snapshot of the notebook's current condition.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
@@ -122,21 +143,23 @@ A JSON object with notebook status information:
 ```
 
 #### read_nb_cells
-Read multiple cells by specifying ranges.
+Reads multiple cells by specifying ranges. If no ranges are specified, all cells in the notebook are read, providing detailed cell information including content, type, and execution data.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
 - `ranges` (optional): Array of cell ranges to read
-  - `start`: Starting cell index
+  - `start`: Starting cell index (0-based)
   - `end` (optional): Ending cell index (exclusive)
 
 **Returns:**
 A JSON object with cell information:
 - `cells`: Array of cell objects
-  - `index`: Cell index
+  - `index`: Cell index (0-based)
   - `id`: Cell ID
   - `content`: Cell content
   - `type`: Cell type ("code" or "markdown")
+  - `execution_count`: Execution count for code cells (null if not executed)
+  - `outputs`: Array of outputs for code cells (empty array if none)
 
 **Example:**
 ```json
@@ -153,7 +176,7 @@ A JSON object with cell information:
 ```
 
 #### modify_nb_cells
-Modify multiple cells by specifying ranges, with optional execution.
+Modifies multiple cells by specifying ranges, with optional execution after modification, allowing for efficient batch updates to notebook content.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
@@ -165,10 +188,22 @@ Modify multiple cells by specifying ranges, with optional execution.
 - `exec` (optional, default: true): Whether to execute the modified cells
 
 **Returns:**
-Success message indicating the number of cell ranges modified and whether they were executed.
+A JSON object with:
+- `message`: Success message
+- `modified_ranges`: Number of cell ranges modified
+- `executed`: Boolean indicating whether cells were executed
+
+**Example:**
+```json
+{
+  "message": "Successfully modified 2 cell ranges",
+  "modified_ranges": 2,
+  "executed": true
+}
+```
 
 #### insert_nb_cells
-Insert multiple cells at a specified location, with optional execution.
+Inserts multiple cells at a specified location, with optional execution after insertion, enabling dynamic expansion of notebook content.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
@@ -183,8 +218,16 @@ A JSON object with:
 - `message`: Success message
 - `cell_ids`: Array of IDs of the newly inserted cells
 
+**Example:**
+```json
+{
+  "message": "Successfully inserted 3 cells",
+  "cell_ids": ["cell-abc123", "cell-def456", "cell-ghi789"]
+}
+```
+
 #### delete_nb_cells
-Delete multiple cells by specifying ranges.
+Deletes multiple cells by specifying ranges, providing a way to remove unwanted content from notebooks efficiently.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
@@ -193,10 +236,20 @@ Delete multiple cells by specifying ranges.
   - `end` (optional): Ending cell index (exclusive)
 
 **Returns:**
-Success message indicating the number of cells deleted.
+A JSON object with:
+- `message`: Success message
+- `deleted_cells`: Number of cells deleted
+
+**Example:**
+```json
+{
+  "message": "Successfully deleted 5 cells",
+  "deleted_cells": 5
+}
+```
 
 #### execute_nb_cells
-Execute multiple cells by specifying ranges.
+Executes multiple cells by specifying ranges, allowing for selective code execution without modifying cell content.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
@@ -205,22 +258,20 @@ Execute multiple cells by specifying ranges.
   - `end` (optional): Ending cell index (exclusive)
 
 **Returns:**
-Success message indicating the number of cell ranges executed.
+A JSON object with:
+- `message`: Success message
+- `executed_ranges`: Number of cell ranges executed
 
 **Example:**
 ```json
 {
-  "content": [
-    {
-      "type": "text",
-      "text": "Successfully executed 2 cell ranges"
-    }
-  ]
+  "message": "Successfully executed 2 cell ranges",
+  "executed_ranges": 2
 }
 ```
 
 #### restart_nb_kernel
-Restart the kernel of a specified notebook, with options to clear contents and execute cells.
+Restarts the kernel of a specified notebook, with options to clear outputs and execute cells after restart, providing a clean execution environment.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
@@ -235,17 +286,19 @@ Restart the kernel of a specified notebook, with options to clear contents and e
 - After kernel restart, cell contents can be cleared and cells can be executed based on parameters
 
 **Returns:**
-Success message indicating kernel restart status and whether contents were cleared and cells were executed.
+A JSON object with:
+- `message`: Success message
+- `kernel_restarted`: Boolean indicating whether kernel was restarted
+- `outputs_cleared`: Boolean indicating whether outputs were cleared
+- `cells_executed`: Boolean indicating whether cells were executed
 
 **Example:**
 ```json
 {
-  "content": [
-    {
-      "type": "text",
-      "text": "Successfully restarted notebook kernel and executed cells"
-    }
-  ]
+  "message": "Successfully restarted notebook kernel and executed cells",
+  "kernel_restarted": true,
+  "outputs_cleared": false,
+  "cells_executed": true
 }
 ```
 
@@ -255,7 +308,7 @@ Success message indicating kernel restart status and whether contents were clear
 - If kernel restart fails, returns detailed error information
 
 #### list_available_kernels
-List all available kernels on the JupyterLab server.
+Lists all available kernels on the JupyterLab server, providing information about kernel names, display names, languages, and resource paths.
 
 **Parameters:**
 None
@@ -293,24 +346,24 @@ A JSON object with available kernel information:
 - If the kernelspecs API is not available, returns detailed error information
 
 #### assign_nb_kernel
-Assign a specific kernel to a notebook.
+Assigns a specific kernel to a notebook, enabling the notebook to use a particular programming language environment for code execution.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
 - `kernel_name` (required): Name of the kernel to assign (from list_available_kernels)
 
 **Returns:**
-Success message indicating kernel assignment status.
+A JSON object with:
+- `message`: Success message
+- `kernel_assigned`: Boolean indicating whether kernel was assigned
+- `kernel_name`: Name of the assigned kernel
 
 **Example:**
 ```json
 {
-  "content": [
-    {
-      "type": "text",
-      "text": "Successfully assigned kernel 'python3' to notebook 'example.ipynb'"
-    }
-  ]
+  "message": "Successfully assigned kernel 'python3' to notebook 'example.ipynb'",
+  "kernel_assigned": true,
+  "kernel_name": "python3"
 }
 ```
 
@@ -324,10 +377,132 @@ Success message indicating kernel assignment status.
 - If the specified kernel is not available, returns detailed error information
 - If session creation or update fails, returns detailed error information
 
-### Document Management
+### Document RTC Tools
+
+The Document RTC Tools category provides real-time collaboration features for document editing using JupyterLab's RTC infrastructure. These tools enable AI agents to perform text operations on documents with immediate synchronization across all collaborators. The tools leverage Yjs CRDTs to ensure conflict-free editing and consistent document state.
+
+Key features of these tools include:
+- Position-based text insertion, deletion, and replacement
+- Real-time synchronization with all collaborators
+- Efficient handling of large documents with content length limits
+- Support for various document types (text files, markdown, etc.)
+- Conflict resolution through CRDT technology
+
+#### get_document_content
+Retrieves document content using real-time collaboration, with configurable content length limits for efficient handling of large documents.
+
+**Parameters:**
+- `path` (required): Path to the document
+- `max_content` (optional, default: 32768): Maximum content length to return (default: 32KB)
+
+**Returns:**
+A JSON object with document content:
+- `content`: The document content
+- `truncated`: Boolean indicating if content was truncated due to size limits
+- `content_length`: Length of the content
+
+**Example:**
+```json
+{
+  "content": "# Document Content\n\nThis is a sample document.",
+  "truncated": false,
+  "content_length": 42
+}
+```
+
+**Note:** This tool uses RTC to efficiently retrieve document content, especially useful for large documents where only a portion is needed.
+
+#### insert_document_text
+Inserts text at a specific position in a document using real-time collaboration, with changes immediately visible to all collaborators.
+
+**Parameters:**
+- `path` (required): Path to the document
+- `position` (required): Position to insert the text (0-based)
+- `text` (required): Text to insert
+
+**Returns:**
+A JSON object with:
+- `message`: Success message
+- `position`: Position where text was inserted
+- `length`: Length of inserted text
+
+**Example:**
+```json
+{
+  "message": "Successfully inserted 15 characters at position 42",
+  "position": 42,
+  "length": 15
+}
+```
+
+**Note:** This tool uses Yjs RTC to efficiently insert text at the specified position, with changes immediately visible to all collaborators.
+
+#### delete_document_text
+Deletes text from a specific position in a document using real-time collaboration, with changes immediately synchronized across all collaborators.
+
+**Parameters:**
+- `path` (required): Path to the document
+- `position` (required): Starting position to delete from (0-based)
+- `length` (required): Number of characters to delete
+
+**Returns:**
+A JSON object with:
+- `message`: Success message
+- `position`: Position where text was deleted
+- `length`: Length of deleted text
+
+**Example:**
+```json
+{
+  "message": "Successfully deleted 10 characters from position 42",
+  "position": 42,
+  "length": 10
+}
+```
+
+**Note:** This tool uses Yjs RTC to efficiently delete text from the specified position, with changes immediately visible to all collaborators.
+
+#### replace_document_text
+Replaces text in a specific range in a document using real-time collaboration, with changes immediately synchronized across all collaborators.
+
+**Parameters:**
+- `path` (required): Path to the document
+- `position` (required): Starting position to replace from (0-based)
+- `length` (required): Number of characters to replace
+- `text` (required): Replacement text
+
+**Returns:**
+A JSON object with:
+- `message`: Success message
+- `position`: Position where text was replaced
+- `length`: Length of replaced text
+- `new_length`: Length of replacement text
+
+**Example:**
+```json
+{
+  "message": "Successfully replaced 10 characters with 15 new characters at position 42",
+  "position": 42,
+  "length": 10,
+  "new_length": 15
+}
+```
+
+**Note:** This tool uses Yjs RTC to efficiently replace text in the specified range, with changes immediately visible to all collaborators.
+
+### Document Management Tools
+
+The Document Management Tools category provides basic document management functionality without using real-time collaboration. These tools enable AI agents to perform file system operations on documents within JupyterLab, including creation, deletion, renaming, copying, and content modification. Unlike the Document RTC Tools, these operations do not establish real-time collaboration sessions.
+
+Key features of these tools include:
+- Comprehensive document lifecycle management (create, read, update, delete)
+- Support for various document types (notebooks, files, directories)
+- Detailed document information retrieval
+- Content manipulation with size limits
+- URL generation for direct access in JupyterLab
 
 #### list_documents
-List available documents in JupyterLab from a specified path.
+Lists available documents in JupyterLab from a specified path, providing comprehensive information about each document including metadata and access URLs.
 
 **Parameters:**
 - `path` (optional): Path to list documents from (default: root directory)
@@ -365,7 +540,7 @@ A JSON array of document objects with properties:
 - Directories: `/tree/path/to/directory`
 
 #### create_document
-Create a new document in JupyterLab.
+Creates a new document in JupyterLab with optional initial content, supporting various document types including notebooks, files, and markdown.
 
 **Parameters:**
 - `path` (required): Path for the new document
@@ -373,10 +548,22 @@ Create a new document in JupyterLab.
 - `content` (optional): Initial content for the document
 
 **Returns:**
-Success message indicating the document was created.
+A JSON object with:
+- `message`: Success message
+- `path`: Path of the created document
+- `type`: Type of the created document
+
+**Example:**
+```json
+{
+  "message": "Successfully created notebook at '/example/new_notebook.ipynb'",
+  "path": "/example/new_notebook.ipynb",
+  "type": "notebook"
+}
+```
 
 #### get_document_info
-Get information about a document.
+Retrieves comprehensive information about a document, with optional content inclusion, supporting detailed metadata analysis.
 
 **Parameters:**
 - `path` (required): Path to the document
@@ -455,223 +642,103 @@ Message 3:
 ```
 
 #### delete_document
-Delete a document in JupyterLab.
+Deletes a document in JupyterLab, permanently removing it from the file system.
 
 **Parameters:**
 - `path` (required): Path to the document to delete
 
 **Returns:**
-Success message indicating the document was deleted.
+A JSON object with:
+- `message`: Success message
+- `path`: Path of the deleted document
+
+**Example:**
+```json
+{
+  "message": "Successfully deleted document at '/example/old_document.md'",
+  "path": "/example/old_document.md"
+}
+```
 
 #### rename_document
-Rename a document in JupyterLab.
+Renames a document in JupyterLab, changing its path while preserving its content and metadata.
 
 **Parameters:**
 - `path` (required): Current path to the document
 - `newPath` (required): New path for the document
 
 **Returns:**
-Success message indicating the document was renamed.
+A JSON object with:
+- `message`: Success message
+- `old_path`: Original path of the document
+- `new_path`: New path of the document
+
+**Example:**
+```json
+{
+  "message": "Successfully renamed document from '/example/old_name.md' to '/example/new_name.md'",
+  "old_path": "/example/old_name.md",
+  "new_path": "/example/new_name.md"
+}
+```
 
 #### copy_document
-Copy a document in JupyterLab.
+Copies a document in JupyterLab, creating a duplicate at the specified path while preserving the original.
 
 **Parameters:**
 - `path` (required): Path to the document to copy
 - `copyPath` (required): Path for the copied document
 
 **Returns:**
-Success message indicating the document was copied.
+A JSON object with:
+- `message`: Success message
+- `original_path`: Path of the original document
+- `copy_path`: Path of the copied document
+
+**Example:**
+```json
+{
+  "message": "Successfully copied document from '/example/source.md' to '/example/backup.md'",
+  "original_path": "/example/source.md",
+  "copy_path": "/example/backup.md"
+}
+```
 
 #### overwrite_document
-Overwrite the entire content of a document in JupyterLab.
+Overwrites the entire content of a document in JupyterLab, replacing all existing content with the provided new content.
 
 **Parameters:**
 - `path` (required): Path to the document to modify
 - `content` (required): New content for the document
 
 **Returns:**
-Success message indicating the document was modified.
-
-#### get_document_content
-Get document content using real-time collaboration.
-
-**Parameters:**
-- `path` (required): Path to the document
-- `max_content` (optional, default: 32768): Maximum content length to return (default: 32KB)
-
-**Returns:**
-A JSON object with document content:
-- `content`: The document content
-- `truncated`: Boolean indicating if content was truncated due to size limits
-- `content_length`: Length of the content
+A JSON object with:
+- `message`: Success message
+- `path`: Path of the modified document
+- `content_length`: Length of the new content
 
 **Example:**
 ```json
 {
-  "content": "# Document Content\n\nThis is a sample document.",
-  "truncated": false,
-  "content_length": 42
-}
-```
-
-**Note:** This tool uses RTC to efficiently retrieve document content, especially useful for large documents where only a portion is needed.
-
-#### insert_document_text
-Insert text at a specific position in a document using real-time collaboration.
-
-**Parameters:**
-- `path` (required): Path to the document
-- `position` (required): Position to insert the text (0-based)
-- `text` (required): Text to insert
-
-**Returns:**
-Success message indicating the text was inserted.
-
-**Example:**
-```json
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "Successfully inserted text at position 42"
-    }
-  ]
-}
-```
-
-**Note:** This tool uses Yjs RTC to efficiently insert text at the specified position, with changes immediately visible to all collaborators.
-
-#### delete_document_text
-Delete text from a specific position in a document using real-time collaboration.
-
-**Parameters:**
-- `path` (required): Path to the document
-- `position` (required): Starting position to delete from (0-based)
-- `length` (required): Number of characters to delete
-
-**Returns:**
-Success message indicating the text was deleted.
-
-**Example:**
-```json
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "Successfully deleted 10 characters from position 42"
-    }
-  ]
-}
-```
-
-**Note:** This tool uses Yjs RTC to efficiently delete text from the specified position, with changes immediately visible to all collaborators.
-
-#### replace_document_text
-Replace text in a specific range in a document using real-time collaboration.
-
-**Parameters:**
-- `path` (required): Path to the document
-- `position` (required): Starting position to replace from (0-based)
-- `length` (required): Number of characters to replace
-- `text` (required): Replacement text
-
-**Returns:**
-Success message indicating the text was replaced.
-
-**Example:**
-```json
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "Successfully replaced 10 characters with new text at position 42"
-    }
-  ]
-}
-```
-
-**Note:** This tool uses Yjs RTC to efficiently replace text in the specified range, with changes immediately visible to all collaborators.
-
-#### end_document_session
-End a real-time collaboration session for a document.
-
-**Parameters:**
-- `path` (required): Path to the document
-
-**Returns:**
-A JSON object with session status:
-- `path`: Path to the document
-- `status`: Session status ("disconnected" or "not_found")
-- `message`: Status message
-
-**Example:**
-```json
-{
+  "message": "Successfully overwrote document at '/example/document.md'",
   "path": "/example/document.md",
-  "status": "disconnected",
-  "message": "RTC session ended successfully"
+  "content_length": 256
 }
 ```
 
-**Note:** This tool can be used to manually terminate a document session before the automatic timeout.
+### RTC Session Management Tools
 
-#### query_document_session
-Query the status of a real-time collaboration session for a document.
+The RTC Session Management Tools category provides functionality for querying and managing real-time collaboration sessions. These tools enable AI agents to monitor active sessions, check session status, and explicitly terminate sessions when needed. The server uses an implicit session management approach with automatic timeout, but these tools provide explicit control when required.
 
-**Parameters:**
-- `path` (required): Path to the document
-
-**Returns:**
-A JSON object with session status information:
-- `path`: Path to the document
-- `session_id`: RTC session ID (if active)
-- `file_id`: File ID for the RTC session (if active)
-- `status`: Session status ("connected", "disconnected", or "not_found")
-- `last_activity`: Timestamp of last activity (if active)
-- `message`: Status message
-
-**Example:**
-```json
-{
-  "path": "/example/document.md",
-  "session_id": "session-id-123",
-  "file_id": "file-id-456",
-  "status": "connected",
-  "last_activity": "2023-01-01T12:00:00Z",
-  "message": "RTC session is active"
-}
-```
-
-**Note:** This tool can be used to check if a document has an active RTC session and when it was last accessed.
-
-### RTC Session Management
-
-#### end_nb_session
-End a real-time collaboration session for a notebook.
-
-**Parameters:**
-- `path` (required): Path to the notebook file
-
-**Returns:**
-A JSON object with session status:
-- `path`: Path to the notebook
-- `status`: Session status ("disconnected" or "not_found")
-- `message`: Status message
-
-**Example:**
-```json
-{
-  "path": "/example/notebook1.ipynb",
-  "status": "disconnected",
-  "message": "RTC session ended successfully"
-}
-```
-
-**Note:** Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes). This tool can be used to manually terminate a session before the timeout.
+Key features of these tools include:
+- Querying session status for notebooks and documents
+- Monitoring session activity and last access times
+- Explicit session termination to free resources
+- Session timeout configuration
+- Tracking of active and disconnected sessions
 
 #### query_nb_sessions
-Query the status of real-time collaboration sessions for notebooks in a directory.
+Queries the status of real-time collaboration sessions for notebooks in a directory, providing comprehensive session information including activity status and metadata.
 
 **Parameters:**
 - `root_path` (optional): Directory path to search for notebook sessions (default: lab root directory)
@@ -721,6 +788,82 @@ A JSON object with session status information:
 
 **Note:** Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes). The `last_activity` timestamp shows when the session was last accessed.
 
+#### end_nb_session
+Ends a real-time collaboration session for a notebook, explicitly terminating the session to free resources.
+
+**Parameters:**
+- `path` (required): Path to the notebook file
+
+**Returns:**
+A JSON object with session status:
+- `path`: Path to the notebook
+- `status`: Session status ("disconnected" or "not_found")
+- `message`: Status message
+
+**Example:**
+```json
+{
+  "path": "/example/notebook1.ipynb",
+  "status": "disconnected",
+  "message": "RTC session ended successfully"
+}
+```
+
+**Note:** Sessions are automatically terminated after a period of inactivity (configurable via command line argument, default: 5 minutes). This tool can be used to manually terminate a session before the timeout.
+
+
+#### query_document_session
+Queries the status of a real-time collaboration session for a document, providing information about session connectivity and last activity.
+
+**Parameters:**
+- `path` (required): Path to the document
+
+**Returns:**
+A JSON object with session status information:
+- `path`: Path to the document
+- `session_id`: RTC session ID (if active)
+- `file_id`: File ID for the RTC session (if active)
+- `status`: Session status ("connected", "disconnected", or "not_found")
+- `last_activity`: Timestamp of last activity (if active)
+- `message`: Status message
+
+**Example:**
+```json
+{
+  "path": "/example/document.md",
+  "session_id": "session-id-123",
+  "file_id": "file-id-456",
+  "status": "connected",
+  "last_activity": "2023-01-01T12:00:00Z",
+  "message": "RTC session is active"
+}
+```
+
+**Note:** This tool can be used to check if a document has an active RTC session and when it was last accessed.
+
+#### end_document_session
+Ends a real-time collaboration session for a document, explicitly terminating the session to free resources.
+
+**Parameters:**
+- `path` (required): Path to the document
+
+**Returns:**
+A JSON object with session status:
+- `path`: Path to the document
+- `status`: Session status ("disconnected" or "not_found")
+- `message`: Status message
+
+**Example:**
+```json
+{
+  "path": "/example/document.md",
+  "status": "disconnected",
+  "message": "RTC session ended successfully"
+}
+```
+
+**Note:** This tool can be used to manually terminate a document session before the automatic timeout.
+
 ## Architecture Overview
 
 ### Session Management
@@ -760,9 +903,10 @@ The server leverages JupyterLab's built-in RTC infrastructure:
 
 Tools are organized into logical categories:
 
-1. **RTC Session Management**: Tools for querying and ending notebook sessions
-2. **Notebook Operations**: Tools for reading, modifying, inserting, deleting cells, and managing kernels
-3. **Document Management**: Tools for creating, listing, and managing documents in JupyterLab
+1. **Notebook RTC**: Tools for reading, modifying, inserting, deleting cells, and managing kernels
+2. **Document RTC**: Real-time collaboration features for document editing
+3. **Document Management**: Basic document operations without real-time collaboration
+4. **RTC Session Management**: Tools for querying and ending notebook sessions
 
 ## Dependencies
 
