@@ -6,14 +6,31 @@ import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { DocumentInfo } from "../jupyter/types.js";
 
 /**
- * DocumentTools provides high-level operations for document management
+ * DocumentTools provides high-level operations for document management through RTC infrastructure
  *
- * This class implements the MCP tools for listing, creating, and managing
- * documents in JupyterLab.
+ * This class implements the MCP tools for listing, creating, and managing documents in JupyterLab.
+ * It supports both traditional file operations (create, delete, rename, copy) and RTC-based
+ * text manipulation operations (insert, delete, replace text) for real-time collaboration.
  *
  * All document viewing and manipulations are performed via RTC infrastructure,
  * so AI agents see up-to-date data, while its modifications are visible to human
  * users who opened a browser tab for the document, in real time.
+ *
+ * Key features:
+ * - List documents with metadata and URL construction
+ * - Create documents with initial content
+ * - Document operations: delete, rename, copy
+ * - RTC-based text manipulation: insert, delete, replace
+ * - Content retrieval with truncation support
+ * - RTC session management: query and end sessions
+ *
+ * @example
+ * ```typescript
+ * const documentTools = new DocumentTools(jupyterAdapter);
+ * const result = await documentTools.listDocuments('projects');
+ * const documents = JSON.parse(result.content[0].text);
+ * console.log(`Found ${documents.length} documents`);
+ * ```
  */
 export class DocumentTools {
   private jupyterAdapter: JupyterLabAdapter;
@@ -24,8 +41,23 @@ export class DocumentTools {
 
   /**
    * List available documents in JupyterLab
-   * @param path Path to list documents from (default: root)
-   * @returns MCP response with document list
+   *
+   * Retrieves a list of documents from the specified path in JupyterLab, including files,
+   * notebooks, and directories. For each item, it constructs appropriate URLs based on
+   * the item type (notebook, file, or directory) and includes metadata like creation time,
+   * modification time, size, and write permissions.
+   *
+   * @param path Path to list documents from (default: root directory)
+   * @returns MCP response with document list including name, path, type, timestamps, size, and URL
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.listDocuments('projects/data');
+   * const documents = JSON.parse(result.content[0].text);
+   * documents.forEach(doc => {
+   *   console.log(`${doc.name} (${doc.type}): ${doc.url}`);
+   * });
+   * ```
    */
   async listDocuments(path?: string): Promise<CallToolResult> {
     try {
@@ -112,10 +144,28 @@ export class DocumentTools {
 
   /**
    * Create a new document in JupyterLab
+   *
+   * Creates a new document with the specified path, type, and optional initial content.
+   * The method validates that .ipynb files are not created (use createNotebook instead)
+   * and defaults to markdown type if not specified. Supports various document types
+   * including text files, markdown, and reStructuredText.
+   *
    * @param path Path for the new document
-   * @param type Document type (markdown, txt, rst, etc.)
-   * @param content Initial content for the document
-   * @returns MCP response indicating success
+   * @param type Document type (markdown, txt, rst, etc.). Defaults to 'markdown' if not specified.
+   * @param content Initial content for the document (optional)
+   * @returns MCP response indicating success with confirmation message
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.createDocument(
+   *   'projects/README.md',
+   *   'markdown',
+   *   '# Project Documentation\n\nThis is a sample project.'
+   * );
+   * console.log(result.content[0].text);
+   * ```
+   *
+   * @throws {Error} If path ends with .ipynb extension
    */
   async createDocument(
     path: string,
@@ -205,10 +255,32 @@ export class DocumentTools {
 
   /**
    * Get document information
+   *
+   * Retrieves comprehensive information about a document including metadata and optionally
+   * its content. The method constructs appropriate URLs based on the document type and
+   * supports content truncation for large files. When content is requested, it returns
+   * both metadata and the actual content with truncation information.
+   *
    * @param path Path to the document
    * @param includeContent Whether to include document content (default: false)
-   * @param maxContent Maximum content length to return (default: 32768)
-   * @returns MCP response with document information
+   * @param maxContent Maximum content length to return (default: 32768 characters)
+   * @returns MCP response with document information including metadata and optionally content with truncation info
+   *
+   * @example
+   * ```typescript
+   * // Get document metadata only
+   * const result = await documentTools.getDocumentInfo('projects/README.md');
+   * const info = JSON.parse(result.content[0].text);
+   * console.log(`Document size: ${info.size} bytes`);
+   *
+   * // Get document with content
+   * const resultWithContent = await documentTools.getDocumentInfo(
+   *   'projects/README.md', true, 1000
+   * );
+   * const contentInfo = JSON.parse(resultWithContent.content[0].text);
+   * const content = resultWithContent.content[1].text;
+   * console.log(`Content length: ${contentInfo.content_length}, truncated: ${contentInfo.truncated}`);
+   * ```
    */
   async getDocumentInfo(
     path: string,
@@ -330,8 +402,21 @@ export class DocumentTools {
 
   /**
    * Delete a document
+   *
+   * Permanently deletes a document from the JupyterLab server. This operation cannot
+   * be undone. The method handles both files and directories. After successful deletion,
+   * the document is no longer accessible through JupyterLab.
+   *
    * @param path Path to the document to delete
-   * @returns MCP response indicating success
+   * @returns MCP response indicating success with confirmation message
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.deleteDocument('projects/old_draft.md');
+   * console.log(result.content[0].text); // "Successfully deleted document at projects/old_draft.md"
+   * ```
+   *
+   * @warning This operation is permanent and cannot be undone
    */
   async deleteDocument(path: string): Promise<CallToolResult> {
     try {
@@ -388,9 +473,23 @@ export class DocumentTools {
 
   /**
    * Rename a document
+   *
+   * Renames a document by changing its path in the JupyterLab filesystem. This operation
+   * effectively moves the document to a new location or changes its name. The method
+   * preserves all document content and metadata during the rename operation.
+   *
    * @param path Current path to the document
-   * @param newPath New path for the document
-   * @returns MCP response indicating success
+   * @param newPath New path for the document (can include directory changes)
+   * @returns MCP response indicating success with confirmation message
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.renameDocument(
+   *   'projects/draft.md',
+   *   'projects/final_version.md'
+   * );
+   * console.log(result.content[0].text);
+   * ```
    */
   async renameDocument(path: string, newPath: string): Promise<CallToolResult> {
     try {
@@ -455,9 +554,23 @@ export class DocumentTools {
 
   /**
    * Copy a document
+   *
+   * Creates a copy of a document at the specified path. The copy operation preserves
+   * all content and metadata of the original document. The destination path can be
+   * in the same directory or a different directory.
+   *
    * @param path Path to the document to copy
    * @param copyPath Path for the copied document
-   * @returns MCP response indicating success
+   * @returns MCP response indicating success with confirmation message
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.copyDocument(
+   *   'projects/template.md',
+   *   'projects/new_document.md'
+   * );
+   * console.log(result.content[0].text);
+   * ```
    */
   async copyDocument(path: string, copyPath: string): Promise<CallToolResult> {
     try {
@@ -522,9 +635,33 @@ export class DocumentTools {
 
   /**
    * Overwrite the entire content of a document
+   *
+   * Completely replaces the content of a document with new content. The method
+   * automatically detects the document type and handles content appropriately:
+   * - For text files: content is treated as plain text
+   * - For notebooks: content must be valid JSON and is parsed accordingly
+   * The operation preserves all other document metadata.
+   *
    * @param path Path to the document to overwrite
    * @param content New content for the document
-   * @returns MCP response indicating success
+   * @returns MCP response indicating success with confirmation message
+   *
+   * @example
+   * ```typescript
+   * // Overwrite a text file
+   * await documentTools.overwriteDocument('projects/notes.txt', 'New content here');
+   *
+   * // Overwrite a notebook with JSON content
+   * const notebookContent = JSON.stringify({
+   *   cells: [{ cell_type: "code", source: "print('Hello')", execution_count: null }],
+   *   metadata: {},
+   *   nbformat: 4,
+   *   nbformat_minor: 5
+   * });
+   * await documentTools.overwriteDocument('projects/analysis.ipynb', notebookContent);
+   * ```
+   *
+   * @throws {Error} If content is invalid JSON for notebook files
    */
   async overwriteDocument(
     path: string,
@@ -635,10 +772,27 @@ export class DocumentTools {
 
   /**
    * Insert text into a document at a specific position using RTC
+   *
+   * Inserts text at the specified position in a document using Real-Time Collaboration (RTC)
+   * infrastructure. The operation is immediately visible to all collaborators viewing the
+   * document. This method only works with text files and will reject notebook files.
+   *
    * @param path Path to the document
-   * @param position Position to insert text at
+   * @param position Position to insert text at (0-based character index)
    * @param text Text to insert
-   * @returns MCP response indicating success
+   * @returns MCP response indicating success with confirmation message
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.insertDocumentText(
+   *   'projects/notes.md',
+   *   10,
+   *   'INSERTED TEXT'
+   * );
+   * console.log(result.content[0].text);
+   * ```
+   *
+   * @throws {Error} If path ends with .ipynb extension
    */
   async insertDocumentText(
     path: string,
@@ -683,10 +837,28 @@ export class DocumentTools {
 
   /**
    * Delete text from a document at a specific position using RTC
+   *
+   * Deletes a specified length of text from the given position in a document using
+   * Real-Time Collaboration (RTC) infrastructure. The operation is immediately
+   * visible to all collaborators viewing the document. This method only works with
+   * text files and will reject notebook files.
+   *
    * @param path Path to the document
-   * @param position Position to delete text from
-   * @param length Length of text to delete
-   * @returns MCP response indicating success
+   * @param position Position to delete text from (0-based character index)
+   * @param length Length of text to delete (in characters)
+   * @returns MCP response indicating success with confirmation message
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.deleteDocumentText(
+   *   'projects/notes.md',
+   *   10,
+   *   5
+   * );
+   * console.log(result.content[0].text); // "Successfully deleted 5 characters..."
+   * ```
+   *
+   * @throws {Error} If path ends with .ipynb extension
    */
   async deleteDocumentText(
     path: string,
@@ -731,11 +903,30 @@ export class DocumentTools {
 
   /**
    * Replace text in a document at a specific position using RTC
+   *
+   * Replaces a specified length of text at the given position with new text using
+   * Real-Time Collaboration (RTC) infrastructure. The operation is immediately
+   * visible to all collaborators viewing the document. This method only works with
+   * text files and will reject notebook files.
+   *
    * @param path Path to the document
-   * @param position Position to replace text from
-   * @param length Length of text to replace
+   * @param position Position to replace text from (0-based character index)
+   * @param length Length of text to replace (in characters)
    * @param text New text to replace with
-   * @returns MCP response indicating success
+   * @returns MCP response indicating success with confirmation message
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.replaceDocumentText(
+   *   'projects/notes.md',
+   *   10,
+   *   5,
+   *   'REPLACEMENT TEXT'
+   * );
+   * console.log(result.content[0].text);
+   * ```
+   *
+   * @throws {Error} If path ends with .ipynb extension
    */
   async replaceDocumentText(
     path: string,
@@ -781,9 +972,28 @@ export class DocumentTools {
 
   /**
    * Get document content using RTC
+   *
+   * Retrieves the current content of a document using Real-Time Collaboration (RTC)
+   * infrastructure, ensuring the most up-to-date content is returned. The method
+   * supports content truncation for large files and provides information about
+   * whether truncation occurred. This method only works with text files and will
+   * reject notebook files.
+   *
    * @param path Path to the document
-   * @param maxContent Maximum content length to return (default: 32768)
-   * @returns MCP response with document content
+   * @param maxContent Maximum content length to return (default: 32768 characters)
+   * @returns MCP response with document content and truncation information
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.getDocumentContent('projects/notes.md', 1000);
+   * const contentInfo = JSON.parse(result.content[0].text);
+   * const content = result.content[1].text;
+   * console.log(`Content length: ${contentInfo.content_length}`);
+   * console.log(`Truncated: ${contentInfo.truncated}`);
+   * console.log('Content preview:', content.substring(0, 100));
+   * ```
+   *
+   * @throws {Error} If path ends with .ipynb extension
    */
   async getDocumentContent(
     path: string,
@@ -847,8 +1057,19 @@ export class DocumentTools {
 
   /**
    * End an RTC session for a document
+   *
+   * Terminates an active Real-Time Collaboration (RTC) session for a document.
+   * This releases resources and stops real-time synchronization for the document.
+   * The session can be re-established later when needed.
+   *
    * @param path Path to the document
-   * @returns MCP response indicating success
+   * @returns MCP response indicating success with session termination details
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.endDocumentSession('projects/notes.md');
+   * console.log(result.content[0].text);
+   * ```
    */
   async endDocumentSession(path: string): Promise<CallToolResult> {
     try {
@@ -863,8 +1084,25 @@ export class DocumentTools {
 
   /**
    * Query the status of an RTC session for a document
+   *
+   * Retrieves the current status of a Real-Time Collaboration (RTC) session for a document.
+   * The response includes information about session connectivity, synchronization status,
+   * and any active collaborators. This is useful for monitoring the state of real-time
+   * collaboration features.
+   *
    * @param path Path to the document
-   * @returns MCP response with session status
+   * @returns MCP response with session status including connectivity, sync status, and collaborator info
+   *
+   * @example
+   * ```typescript
+   * const result = await documentTools.queryDocumentSession('projects/notes.md');
+   * const sessionInfo = JSON.parse(result.content[0].text);
+   * console.log(`Connected: ${sessionInfo.connected}`);
+   * console.log(`Synced: ${sessionInfo.synced}`);
+   * if (sessionInfo.collaborators) {
+   *   console.log(`Active collaborators: ${sessionInfo.collaborators.length}`);
+   * }
+   * ```
    */
   async queryDocumentSession(path: string): Promise<CallToolResult> {
     try {

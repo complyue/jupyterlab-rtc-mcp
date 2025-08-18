@@ -46,14 +46,29 @@ export type JsonResponse =
   | JsonResponseBase;
 
 /**
- * NotebookTools provides high-level operations for Jupyter notebooks
+ * NotebookTools provides high-level operations for Jupyter notebooks through RTC infrastructure
  *
- * This class implements the MCP tools for reading, writing, and executing
- * notebook cells, as well as other notebook-related operations.
+ * This class implements the MCP tools for reading, writing, and executing notebook cells,
+ * as well as other notebook-related operations including kernel management and cell manipulation.
  *
  * All notebook viewing and manipulations are performed via RTC infrastructure,
  * so AI agents see up-to-date data, while its modifications are visible to human
  * users who opened a browser tab for the notebook, in real time.
+ *
+ * Key features:
+ * - List notebooks with RTC session information
+ * - Read cell content with truncation support for large outputs
+ * - Modify, insert, and delete cells with optional execution
+ * - Kernel management (restart, assign, list available kernels)
+ * - Create new notebooks
+ * - Execute cells with output size control
+ *
+ * @example
+ * ```typescript
+ * const notebookTools = new NotebookTools(jupyterAdapter);
+ * const result = await notebookTools.readNotebookCells('path/to/notebook.ipynb');
+ * console.log(result.content);
+ * ```
  */
 export class NotebookTools {
   private jupyterAdapter: JupyterLabAdapter;
@@ -64,8 +79,20 @@ export class NotebookTools {
 
   /**
    * List all notebook files under specified directory, recursively
+   *
+   * This method searches for .ipynb files in the specified directory and all subdirectories,
+   * skipping common system directories like .ipynb_checkpoints, __pycache__, etc.
+   * For each notebook found, it constructs a URL and checks for active RTC sessions.
+   *
    * @param path Directory path to search for notebooks (default: root)
    * @returns MCP response with notebook list including RTC session information
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.listNotebooks('projects');
+   * const notebooks = JSON.parse(result.content[0].text).notebooks;
+   * console.log(`Found ${notebooks.length} notebooks`);
+   * ```
    */
   async listNotebooks(path?: string): Promise<CallToolResult> {
     try {
@@ -281,8 +308,23 @@ export class NotebookTools {
 
   /**
    * Get status information about a notebook
+   *
+   * Retrieves comprehensive status information about a notebook including cell count,
+   * last modification time, and kernel information if available. This method creates
+   * an RTC session if one doesn't exist and ensures the notebook is synchronized.
+   *
    * @param path Path to the notebook file
-   * @returns MCP response with notebook status
+   * @returns MCP response with notebook status including path, cell count, last modified time, and kernel info
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.getNotebookStatus('projects/analysis.ipynb');
+   * const status = JSON.parse(result.content[0].text);
+   * console.log(`Notebook has ${status.cell_count} cells`);
+   * if (status.kernel) {
+   *   console.log(`Kernel: ${status.kernel.name} (${status.kernel.id})`);
+   * }
+   * ```
    */
   async getNotebookStatus(path: string): Promise<CallToolResult> {
     try {
@@ -516,10 +558,27 @@ export class NotebookTools {
 
   /**
    * Read multiple cells by specifying ranges with formal output schema and truncation support
+   *
+   * Reads cells from a notebook with support for specifying ranges and truncating large outputs.
+   * The method creates an RTC session, ensures synchronization, and processes cell outputs
+   * including execution results, display data, and error outputs. Large outputs are truncated
+   * with appropriate metadata indicating truncation occurred.
+   *
    * @param path Path to the notebook file
-   * @param ranges Array of cell ranges to read
+   * @param ranges Array of cell ranges to read. If not provided, reads all cells.
    * @param maxCellData Maximum size in characters for cell source and output data (default: 2048)
-   * @returns MCP response with formal cell data schema
+   * @returns MCP response with formal cell data schema including cell content, metadata, outputs, and truncation info
+   *
+   * @example
+   * ```typescript
+   * // Read cells 0-4 and 10-14
+   * const result = await notebookTools.readNotebookCells('notebook.ipynb', [
+   *   { start: 0, end: 5 },
+   *   { start: 10, end: 15 }
+   * ], 4096);
+   * const data = JSON.parse(result.content[0].text);
+   * console.log(`Read ${data.cells.length} cells`);
+   * ```
    */
   async readNotebookCells(
     path: string,
@@ -655,11 +714,26 @@ export class NotebookTools {
 
   /**
    * Modify multiple cells by specifying ranges, execute them if not disabled
+   *
+   * Modifies the content of cells in specified ranges using RTC transactions for atomic updates.
+   * Supports optional execution of modified cells with configurable output size limits.
+   * The method ensures all modifications are applied in a single transaction and only
+   * executes code cells when execution is enabled.
+   *
    * @param path Path to the notebook file
-   * @param modifications Array of cell modifications
-   * @param exec Whether to execute the modified cells
+   * @param modifications Array of cell modifications, each specifying a range and new content
+   * @param exec Whether to execute the modified cells (default: true). Set to false to skip execution.
    * @param maxCellOutputSize Maximum size in characters for cell output data (default: 2000)
-   * @returns MCP response with execution results if cells were executed
+   * @returns MCP response with execution results if cells were executed, including outputs and truncation info
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.modifyNotebookCells('notebook.ipynb', [
+   *   { range: { start: 0, end: 1 }, content: 'print("Hello World")' }
+   * ], true, 4096);
+   * const response = JSON.parse(result.content[0].text);
+   * console.log(`Modified ${response.modified_ranges} ranges`);
+   * ```
    */
   async modifyNotebookCells(
     path: string,
@@ -745,8 +819,20 @@ export class NotebookTools {
 
   /**
    * Create a new empty notebook in JupyterLab
+   *
+   * Creates a new empty Jupyter notebook with the standard structure (nbformat 4, nbformat_minor 5).
+   * The path must end with .ipynb extension. The notebook is created with no cells and basic metadata.
+   *
    * @param path Path for the new notebook file (should end with .ipynb)
-   * @returns MCP response indicating success
+   * @returns MCP response indicating success with confirmation message
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.createNotebook('projects/new_analysis.ipynb');
+   * console.log(result.content[0].text); // "Successfully created empty notebook at projects/new_analysis.ipynb"
+   * ```
+   *
+   * @throws {Error} If path doesn't end with .ipynb extension
    */
   async createNotebook(path: string): Promise<CallToolResult> {
     try {
@@ -827,12 +913,27 @@ export class NotebookTools {
 
   /**
    * Insert multiple cells at specified location, execute them if not disabled
+   *
+   * Inserts multiple cells at a specified position in the notebook using RTC transactions.
+   * Supports different cell types (code, markdown, raw) and optional execution of code cells.
+   * The method performs bulk insertion for efficiency and tracks which cells were executed.
+   *
    * @param path Path to the notebook file
-   * @param position Position to insert the cells
-   * @param cells Array of cells to insert
-   * @param exec Whether to execute the inserted cells
+   * @param position Position to insert the cells (0-based index)
+   * @param cells Array of cells to insert, each specifying type and content
+   * @param exec Whether to execute the inserted cells (default: true). Set to false to skip execution.
    * @param maxCellOutputSize Maximum size in characters for cell output data (default: 2000)
-   * @returns MCP response with execution results if cells were executed
+   * @returns MCP response with execution results if cells were executed, including outputs and truncation info
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.insertNotebookCells('notebook.ipynb', 0, [
+   *   { type: 'markdown', content: '# Analysis' },
+   *   { type: 'code', content: 'import pandas as pd' }
+   * ], true, 4096);
+   * const response = JSON.parse(result.content[0].text);
+   * console.log(`Inserted cells executed: ${response.executed}`);
+   * ```
    */
   async insertNotebookCells(
     path: string,
@@ -919,9 +1020,24 @@ export class NotebookTools {
 
   /**
    * Delete multiple cells by specifying ranges
+   *
+   * Deletes cells from specified ranges in the notebook using RTC transactions.
+   * The method processes ranges in reverse order to avoid index shifting issues when
+   * deleting multiple ranges. All deletions are performed in a single transaction.
+   *
    * @param path Path to the notebook file
-   * @param ranges Array of cell ranges to delete
-   * @returns MCP response indicating success
+   * @param ranges Array of cell ranges to delete. Each range specifies start and optional end indices.
+   * @returns MCP response indicating success with the count of deleted cells
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.deleteNotebookCells('notebook.ipynb', [
+   *   { start: 0, end: 2 },  // Delete cells 0 and 1
+   *   { start: 5 }            // Delete cell 5 only
+   * ]);
+   * const response = JSON.parse(result.content[0].text);
+   * console.log(`Deleted ${response.message.match(/\d+/)?.[0]} cells`);
+   * ```
    */
   async deleteNotebookCells(
     path: string,
@@ -986,11 +1102,24 @@ export class NotebookTools {
 
   /**
    * Restart the kernel of a specified notebook
+   *
+   * Restarts the kernel associated with a notebook with options to clear outputs and
+   * re-execute cells. Supports specifying a different kernel name to switch kernels.
+   * The method handles the kernel restart process and optional post-restart operations.
+   *
    * @param path Path to the notebook file
-   * @param clear_outputs Whether to clear cell contents after restart
-   * @param exec Whether to execute cells after restart
-   * @param kernel_name Name of the kernel to use (from list_available_kernels)
-   * @returns MCP response indicating success
+   * @param clear_outputs Whether to clear cell outputs after restart (default: false)
+   * @param exec Whether to execute cells after restart (default: false)
+   * @param kernel_name Name of the kernel to use (from list_available_kernels). If not specified, uses current kernel.
+   * @returns MCP response indicating success with details about cleared outputs and executed cells
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.restartNotebookKernel('notebook.ipynb',
+   *   true, true, 'python3');
+   * const response = JSON.parse(result.content[0].text);
+   * console.log(`Kernel restarted, outputs cleared: ${response.cleared_outputs}`);
+   * ```
    */
   async restartNotebookKernel(
     path: string,
@@ -1033,7 +1162,22 @@ export class NotebookTools {
 
   /**
    * List all available kernels on the JupyterLab server
-   * @returns MCP response with list of available kernels
+   *
+   * Retrieves a list of all available kernel specifications from the JupyterLab server.
+   * Each kernel specification includes display name, language, and resource directory path.
+   * This information can be used to select appropriate kernels for notebooks.
+   *
+   * @returns MCP response with list of available kernels including name, display name, language, and path
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.listAvailableKernels();
+   * const kernelData = JSON.parse(result.content[0].text);
+   * console.log('Available kernels:');
+   * kernelData.kernels.forEach(kernel => {
+   *   console.log(`- ${kernel.name}: ${kernel.display_name} (${kernel.language})`);
+   * });
+   * ```
    */
   async listAvailableKernels(): Promise<CallToolResult> {
     try {
@@ -1130,9 +1274,26 @@ export class NotebookTools {
 
   /**
    * Assign a specific kernel to a notebook
+   *
+   * Assigns a specific kernel to a notebook by establishing a connection with the
+   * specified kernel. The kernel name must be from the list of available kernels.
+   * Returns detailed information about the successful assignment or error details
+   * if the assignment failed.
+   *
    * @param path Path to the notebook file
    * @param kernel_name Name of the kernel to assign (from list_available_kernels)
-   * @returns MCP response indicating success
+   * @returns MCP response indicating success with kernel information or failure details
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.assignNotebookKernel('notebook.ipynb', 'python3');
+   * const response = JSON.parse(result.content[0].text);
+   * if (response.success) {
+   *   console.log(`Assigned kernel: ${response.kernel_display_name} (${response.kernel_id})`);
+   * } else {
+   *   console.log(`Assignment failed: ${response.message}`);
+   * }
+   * ```
    */
   async assignNotebookKernel(
     path: string,
@@ -1213,10 +1374,26 @@ export class NotebookTools {
 
   /**
    * Execute multiple cells by specifying ranges
+   *
+   * Executes code cells in specified ranges with configurable output size limits.
+   * Only code cells are executed; markdown and raw cells are ignored. The method
+   * ensures the notebook is synchronized and establishes a kernel connection before
+   * execution. Returns detailed execution results including outputs and truncation info.
+   *
    * @param path Path to the notebook file
-   * @param ranges Array of cell ranges to execute
+   * @param ranges Array of cell ranges to execute. Each range specifies start and optional end indices.
    * @param maxCellOutputSize Maximum size in characters for cell output data (default: 2000)
-   * @returns MCP response with execution results
+   * @returns MCP response with execution results including outputs, truncation info, and execution statistics
+   *
+   * @example
+   * ```typescript
+   * const result = await notebookTools.executeNotebookCells('notebook.ipynb', [
+   *   { start: 0, end: 3 },
+   *   { start: 5 }
+   * ], 4096);
+   * const response = JSON.parse(result.content[0].text);
+   * console.log(`Executed ${response.executed_cells} cells in ${response.executed_ranges} ranges`);
+   * ```
    */
   async executeNotebookCells(
     path: string,

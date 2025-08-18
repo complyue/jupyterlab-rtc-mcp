@@ -143,40 +143,74 @@ A JSON object with notebook status information:
 ```
 
 #### read_nb_cells
-Reads multiple cells by specifying ranges. If no ranges are specified, all cells in the notebook are read, providing detailed cell information including content, type, and execution data.
+Reads multiple cells by specifying ranges with formal output schema and truncation support. If no ranges are specified, all cells in the notebook are read, providing detailed cell information including content, type, execution data, and outputs with truncation information.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
 - `ranges` (optional): Array of cell ranges to read
   - `start`: Starting cell index (0-based)
   - `end` (optional): Ending cell index (exclusive)
+- `maxCellData` (optional, default: 2048): Maximum size in characters for cell source and output data
 
 **Returns:**
 A JSON object with cell information:
+- `path`: Path to the notebook
 - `cells`: Array of cell objects
   - `index`: Cell index (0-based)
   - `id`: Cell ID
-  - `content`: Cell content
-  - `type`: Cell type ("code" or "markdown")
+  - `cell_type`: Cell type ("code", "markdown", or "raw")
+  - `source`: Cell content (truncated if exceeds maxCellData)
+  - `metadata`: Cell metadata
   - `execution_count`: Execution count for code cells (null if not executed)
   - `outputs`: Array of outputs for code cells (empty array if none)
+    - Output types include:
+      - `data`: Output data with MIME types (e.g., "text/plain", "image/png")
+      - `metadata`: Output metadata
+      - `execution_count`: Execution count for the output
+      - `name`: Error name for error outputs
+      - `value`: Error value for error outputs
+      - `traceback`: Error traceback for error outputs
+      - `text`: Stream output text
+  - `truncated`: Object indicating truncation status
+    - `source`: Boolean indicating if source was truncated
+    - `outputs`: Array of booleans indicating if each output was truncated
+- `truncated`: Boolean indicating if any content was truncated
+- `max_cell_data`: Maximum cell data size used
 
 **Example:**
 ```json
 {
+  "path": "example/notebook.ipynb",
   "cells": [
     {
       "index": 0,
       "id": "cell-1",
-      "content": "print('Hello, World!')",
-      "type": "code"
+      "cell_type": "code",
+      "source": "print('Hello, World!')",
+      "metadata": {},
+      "execution_count": 1,
+      "outputs": [
+        {
+          "data": {
+            "text/plain": "Hello, World!"
+          },
+          "metadata": {},
+          "execution_count": 1
+        }
+      ],
+      "truncated": {
+        "source": false,
+        "outputs": [false]
+      }
     }
-  ]
+  ],
+  "truncated": false,
+  "max_cell_data": 2048
 }
 ```
 
 #### modify_nb_cells
-Modifies multiple cells by specifying ranges, with optional execution after modification, allowing for efficient batch updates to notebook content.
+Modifies multiple cells by specifying ranges, with optional execution after modification, allowing for efficient batch updates to notebook content. When execution is enabled, returns detailed execution results with output data.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
@@ -186,24 +220,52 @@ Modifies multiple cells by specifying ranges, with optional execution after modi
     - `end` (optional): Ending cell index (exclusive)
   - `content`: New content for the cells
 - `exec` (optional, default: true): Whether to execute the modified cells
+- `maxCellOutputSize` (optional, default: 2000): Maximum size in characters for cell output data
 
 **Returns:**
 A JSON object with:
 - `message`: Success message
 - `modified_ranges`: Number of cell ranges modified
 - `executed`: Boolean indicating whether cells were executed
+- `execution_results` (optional): Array of execution results if cells were executed
+  - `outputs`: Array of cell outputs
+    - Output types include:
+      - `data`: Output data with MIME types (e.g., "text/plain", "image/png")
+      - `metadata`: Output metadata
+      - `execution_count`: Execution count for the output
+      - `name`: Error name for error outputs
+      - `value`: Error value for error outputs
+      - `traceback`: Error traceback for error outputs
+      - `text`: Stream output text
+  - `truncated`: Boolean indicating if outputs were truncated
+  - `original_size`: Original size of the outputs before truncation
 
 **Example:**
 ```json
 {
-  "message": "Successfully modified 2 cell ranges",
+  "message": "Successfully modified 2 cell ranges and executed cells",
   "modified_ranges": 2,
-  "executed": true
+  "executed": true,
+  "execution_results": [
+    {
+      "outputs": [
+        {
+          "data": {
+            "text/plain": "Result: 42"
+          },
+          "metadata": {},
+          "execution_count": 1
+        }
+      ],
+      "truncated": false,
+      "original_size": 15
+    }
+  ]
 }
 ```
 
 #### insert_nb_cells
-Inserts multiple cells at a specified location, with optional execution after insertion, enabling dynamic expansion of notebook content.
+Inserts multiple cells at a specified location, with optional execution after insertion, enabling dynamic expansion of notebook content. When execution is enabled, returns detailed execution results with output data.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
@@ -212,17 +274,45 @@ Inserts multiple cells at a specified location, with optional execution after in
   - `type` (optional, default: "code"): Cell type ("code" or "markdown")
   - `content`: Cell content
 - `exec` (optional, default: true): Whether to execute the inserted cells
+- `maxCellOutputSize` (optional, default: 2000): Maximum size in characters for cell output data
 
 **Returns:**
 A JSON object with:
 - `message`: Success message
-- `cell_ids`: Array of IDs of the newly inserted cells
+- `executed`: Boolean indicating whether cells were executed
+- `execution_results` (optional): Array of execution results if cells were executed
+  - `outputs`: Array of cell outputs
+    - Output types include:
+      - `data`: Output data with MIME types (e.g., "text/plain", "image/png")
+      - `metadata`: Output metadata
+      - `execution_count`: Execution count for the output
+      - `name`: Error name for error outputs
+      - `value`: Error value for error outputs
+      - `traceback`: Error traceback for error outputs
+      - `text`: Stream output text
+  - `truncated`: Boolean indicating if outputs were truncated
+  - `original_size`: Original size of the outputs before truncation
 
 **Example:**
 ```json
 {
-  "message": "Successfully inserted 3 cells",
-  "cell_ids": ["cell-abc123", "cell-def456", "cell-ghi789"]
+  "message": "Successfully inserted cells",
+  "executed": true,
+  "execution_results": [
+    {
+      "outputs": [
+        {
+          "data": {
+            "text/plain": "Insertion successful"
+          },
+          "metadata": {},
+          "execution_count": 1
+        }
+      ],
+      "truncated": false,
+      "original_size": 20
+    }
+  ]
 }
 ```
 
@@ -249,24 +339,67 @@ A JSON object with:
 ```
 
 #### execute_nb_cells
-Executes multiple cells by specifying ranges, allowing for selective code execution without modifying cell content.
+Executes multiple cells by specifying ranges, allowing for selective code execution without modifying cell content. Returns detailed execution results with output data for each executed cell.
 
 **Parameters:**
 - `path` (required): Path to the notebook file
 - `ranges` (required): Array of cell ranges to execute
   - `start`: Starting cell index
   - `end` (optional): Ending cell index (exclusive)
+- `maxCellOutputSize` (optional, default: 2000): Maximum size in characters for cell output data
 
 **Returns:**
 A JSON object with:
 - `message`: Success message
 - `executed_ranges`: Number of cell ranges executed
+- `executed_cells`: Number of cells executed
+- `execution_results`: Array of execution results for each executed cell
+  - `outputs`: Array of cell outputs
+    - Output types include:
+      - `data`: Output data with MIME types (e.g., "text/plain", "image/png")
+      - `metadata`: Output metadata
+      - `execution_count`: Execution count for the output
+      - `name`: Error name for error outputs
+      - `value`: Error value for error outputs
+      - `traceback`: Error traceback for error outputs
+      - `text`: Stream output text
+  - `truncated`: Boolean indicating if outputs were truncated
+  - `original_size`: Original size of the outputs before truncation
 
 **Example:**
 ```json
 {
   "message": "Successfully executed 2 cell ranges",
-  "executed_ranges": 2
+  "executed_ranges": 2,
+  "executed_cells": 3,
+  "execution_results": [
+    {
+      "outputs": [
+        {
+          "data": {
+            "text/plain": "Execution result: 42"
+          },
+          "metadata": {},
+          "execution_count": 1
+        }
+      ],
+      "truncated": false,
+      "original_size": 22
+    },
+    {
+      "outputs": [
+        {
+          "data": {
+            "text/plain": "Another result"
+          },
+          "metadata": {},
+          "execution_count": 2
+        }
+      ],
+      "truncated": false,
+      "original_size": 14
+    }
+  ]
 }
 ```
 
