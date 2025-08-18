@@ -23,8 +23,7 @@ export class URLTools {
   async getBaseUrl(): Promise<CallToolResult> {
     try {
       // Access the private baseUrl property from the adapter
-      const baseUrl = (this.jupyterAdapter as unknown as { baseUrl: string })
-        .baseUrl;
+      const baseUrl = this.jupyterAdapter.baseUrl;
 
       return {
         content: [
