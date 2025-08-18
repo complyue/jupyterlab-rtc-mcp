@@ -21,6 +21,25 @@ export interface NotebookInfo {
   size?: number;
   writable?: boolean;
   url?: string;
+  // RTC session information
+  rtc_session?: {
+    session_id: string;
+    file_id: string;
+    connected: boolean;
+    synced: boolean;
+    collaborators?: CollaboratorInfo[];
+  };
+}
+
+export interface CollaboratorInfo {
+  id: string;
+  name?: string;
+  color?: string;
+  cursor?: {
+    position: number;
+    cell?: number;
+  };
+  last_activity?: string;
 }
 
 export interface DocumentInfo {

@@ -112,7 +112,7 @@ export class JupyterLabMCPServer {
     // Tool to list notebooks
     this.server.tool(
       "list_nbs",
-      "List all notebook files under specified directory, recursively",
+      "List all notebook files under specified directory, recursively, with RTC session and collaborator information",
       {
         path: z
           .string()

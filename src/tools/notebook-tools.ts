@@ -17,6 +17,7 @@ import {
   CellOutputError,
   ReadNotebookCellsResult,
   CellExecutionResult,
+  CollaboratorInfo,
 } from "../jupyter/types.js";
 import { YCodeCell } from "@jupyter/ydoc";
 
@@ -64,7 +65,7 @@ export class NotebookTools {
   /**
    * List all notebook files under specified directory, recursively
    * @param path Directory path to search for notebooks (default: root)
-   * @returns MCP response with notebook list
+   * @returns MCP response with notebook list including RTC session information
    */
   async listNotebooks(path?: string): Promise<CallToolResult> {
     try {
@@ -124,7 +125,9 @@ export class NotebookTools {
       if (!parsedData) {
         throw new Error("Failed to parse response data");
       }
-      const notebooks = this._extractNotebooks(parsedData as JupyterContent);
+      const notebooks = this._extractNotebooksWithRTC(
+        parsedData as JupyterContent,
+      );
 
       return {
         content: [
@@ -161,11 +164,11 @@ export class NotebookTools {
   }
 
   /**
-   * Extract notebook files from JupyterLab contents API response
+   * Extract notebook files from JupyterLab contents API response with RTC session information
    * @param contents Contents API response
-   * @returns Array of notebook objects
+   * @returns Array of notebook objects with RTC session information
    */
-  private _extractNotebooks(contents: JupyterContent): NotebookInfo[] {
+  private _extractNotebooksWithRTC(contents: JupyterContent): NotebookInfo[] {
     const notebooks: NotebookInfo[] = [];
 
     if (contents.type === "directory") {
@@ -175,12 +178,15 @@ export class NotebookTools {
           if (item.type === "directory") {
             // Skip directories that should be ignored
             if (!this._shouldSkipDirectory(item.name)) {
-              notebooks.push(...this._extractNotebooks(item));
+              notebooks.push(...this._extractNotebooksWithRTC(item));
             }
           } else if (item.type === "notebook") {
             // Construct the full URL for the notebook
             const baseUrl = this.jupyterAdapter["baseUrl"];
             const notebookUrl = `${baseUrl}/notebooks/${item.path}`;
+
+            // Check for active RTC session for this notebook
+            const rtcSession = this._getNotebookRTCSession(item.path);
 
             notebooks.push({
               path: item.path,
@@ -190,6 +196,7 @@ export class NotebookTools {
               size: item.size,
               writable: item.writable,
               url: notebookUrl,
+              rtc_session: rtcSession,
             });
           }
         }
@@ -199,6 +206,9 @@ export class NotebookTools {
       const baseUrl = this.jupyterAdapter["baseUrl"];
       const notebookUrl = `${baseUrl}/notebooks/${contents.path}`;
 
+      // Check for active RTC session for this notebook
+      const rtcSession = this._getNotebookRTCSession(contents.path);
+
       notebooks.push({
         path: contents.path,
         name: contents.name,
@@ -207,10 +217,66 @@ export class NotebookTools {
         size: contents.size,
         writable: contents.writable,
         url: notebookUrl,
+        rtc_session: rtcSession,
       });
     }
 
     return notebooks;
+  }
+
+  /**
+   * Get RTC session information for a notebook
+   * @param path Path to the notebook
+   * @returns RTC session information or undefined if no active session
+   */
+  private _getNotebookRTCSession(path: string):
+    | {
+        session_id: string;
+        file_id: string;
+        connected: boolean;
+        synced: boolean;
+        collaborators?: CollaboratorInfo[];
+      }
+    | undefined {
+    // Check if there's an active notebook session for this path
+    const notebookSession = this.jupyterAdapter.getNotebookSession(path);
+
+    if (notebookSession) {
+      const sessionInfo = notebookSession.session;
+      return {
+        session_id: sessionInfo.sessionId,
+        file_id: sessionInfo.fileId,
+        connected: notebookSession.isConnected(),
+        synced: notebookSession.isSynced(),
+        // TODO: Add collaborator information when the API supports it
+        // collaborators: this._getCollaborators(notebookSession),
+      };
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Get collaborator information from a notebook session
+   * @param session Notebook session
+   * @returns Array of collaborator information
+   */
+  private _getCollaborators(session: any): CollaboratorInfo[] {
+    // This is a placeholder implementation
+    // In a real implementation, this would extract collaborator information
+    // from the Yjs awareness protocol or another source
+    const collaborators: CollaboratorInfo[] = [];
+
+    // TODO: Implement collaborator information extraction using the session parameter
+    // This would typically involve:
+    // 1. Getting awareness information from the Yjs document: session.getDocument()
+    // 2. Extracting user information from the WebSocket provider
+    // 3. Formatting the data into CollaboratorInfo objects
+
+    // Placeholder comment to use the parameter and avoid linting errors
+    void session;
+
+    return collaborators;
   }
 
   /**
