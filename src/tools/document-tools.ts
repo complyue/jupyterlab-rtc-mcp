@@ -72,7 +72,7 @@ export class DocumentTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,
@@ -212,7 +212,7 @@ export class DocumentTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,
@@ -298,7 +298,7 @@ export class DocumentTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,
@@ -430,7 +430,7 @@ export class DocumentTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,
@@ -511,7 +511,7 @@ export class DocumentTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,
@@ -592,7 +592,7 @@ export class DocumentTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,
@@ -644,6 +644,7 @@ export class DocumentTools {
    *
    * @param path Path to the document to overwrite
    * @param content New content for the document
+   * @param type Document type (markdown, txt, rst, etc.)
    * @returns MCP response indicating success with confirmation message
    *
    * @example
@@ -666,6 +667,7 @@ export class DocumentTools {
   async overwriteDocument(
     path: string,
     content: string,
+    type: string,
   ): Promise<CallToolResult> {
     try {
       const settings = ServerConnection.makeSettings({
@@ -673,53 +675,16 @@ export class DocumentTools {
       });
       const url = URLExt.join(settings.baseUrl, "/api/contents", path);
 
-      // First, get the current document info to determine its type
-      const getInfoInit: RequestInit = {
-        method: "GET",
-      };
-
-      // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
-      if (token) {
-        getInfoInit.headers = {
-          ...getInfoInit.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
-      const infoResponse = await ServerConnection.makeRequest(
-        url,
-        getInfoInit,
-        settings,
-      );
-
-      if (!infoResponse.ok) {
-        throw new Error(
-          `Failed to get document info: ${infoResponse.status} ${infoResponse.statusText}`,
-        );
-      }
-
-      const docInfo = await infoResponse.json();
-
       // Prepare the request body with the new content
       const requestBody: {
         content: string | object;
         format: string;
+        type: string;
       } = {
         content: content,
-        format: "text", // Assume text format for simplicity
+        format: "text",
+        type: type,
       };
-
-      // For notebooks, we need to handle the content differently
-      if (docInfo.type === "notebook") {
-        // If it's a notebook, parse the content as JSON
-        try {
-          requestBody.content = JSON.parse(content);
-          requestBody.format = "json";
-        } catch {
-          throw new Error("Invalid JSON content for notebook");
-        }
-      }
 
       const init: RequestInit = {
         method: "PUT",
@@ -730,6 +695,7 @@ export class DocumentTools {
       };
 
       // Add authorization header if token is provided
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,

@@ -31,21 +31,22 @@ export interface ISessionModel {
  * explicitly by AI agents by using tools.
  */
 export class JupyterLabAdapter {
-  private baseUrl: string;
+  private _baseUrl: string;
+  private _token: string | undefined;
   private _kernelManager: KernelManager;
-
-  private documentSessions: Map<string, TextDocumentSession>;
-  private notebookSessions: Map<string, NotebookSession>;
-  private token: string | undefined;
   private sessionTimeout: number;
   private sessionTimeoutTimers: Map<string, ReturnType<typeof setTimeout>>;
 
+  private documentSessions: Map<string, TextDocumentSession>;
+  private notebookSessions: Map<string, NotebookSession>;
+
   constructor(sessionTimeout?: number, baseUrl?: string, token?: string) {
-    this.baseUrl =
-      baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
-    this.token = token || process.env.JUPYTERLAB_TOKEN;
     this.sessionTimeout = sessionTimeout || 5 * 60 * 1000; // Default to 5 minutes
     this.sessionTimeoutTimers = new Map();
+
+    this._baseUrl =
+      baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
+    this._token = token || process.env.JUPYTERLAB_TOKEN;
 
     // Create server settings for the KernelManager
     const serverSettings = ServerConnection.makeSettings({
@@ -60,6 +61,12 @@ export class JupyterLabAdapter {
     this.notebookSessions = new Map();
   }
 
+  get baseUrl() {
+    return this._baseUrl;
+  }
+  get token() {
+    return this._token;
+  }
   get kernelManager() {
     return this._kernelManager;
   }

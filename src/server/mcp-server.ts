@@ -482,9 +482,13 @@ export class JupyterLabMCPServer {
       {
         path: z.string().describe("Path to the document to overwrite"),
         content: z.string().describe("New content for the document"),
+        type: z
+          .enum(["markdown", "txt", "rst"])
+          .default("markdown")
+          .describe("Document type (markdown, txt, rst, etc.)"),
       },
-      async ({ path, content }) => {
-        return await this.documentTools.overwriteDocument(path, content);
+      async ({ path, content, type }) => {
+        return await this.documentTools.overwriteDocument(path, content, type);
       },
     );
 

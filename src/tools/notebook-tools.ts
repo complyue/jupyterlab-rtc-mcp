@@ -112,7 +112,7 @@ export class NotebookTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,
@@ -355,7 +355,7 @@ export class NotebookTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,
@@ -870,7 +870,7 @@ export class NotebookTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         init.headers = {
           ...init.headers,
@@ -1195,7 +1195,7 @@ export class NotebookTools {
       };
 
       // Add authorization header if token is provided
-      const token = process.env.JUPYTERLAB_TOKEN;
+      const token = this.jupyterAdapter.token;
       if (token) {
         kernelsInit.headers = {
           ...kernelsInit.headers,
