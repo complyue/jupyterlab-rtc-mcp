@@ -77,6 +77,29 @@ Key features of these tools include:
 - Range-based operations for efficiency
 - Real-time synchronization with JupyterLab
 
+#### create_notebook
+Creates a new empty notebook in JupyterLab at the specified path.
+
+**Parameters:**
+- `path` (required): Path for the new notebook file (must end with .ipynb)
+
+**Returns:**
+A JSON object with:
+- `message`: Success message
+- `path`: Path of the created notebook
+- `url`: Full URL to access the notebook in JupyterLab
+
+**Example:**
+```json
+{
+  "message": "Successfully created notebook at '/example/new_notebook.ipynb'",
+  "path": "/example/new_notebook.ipynb",
+  "url": "http://localhost:8888/notebooks/example/new_notebook.ipynb"
+}
+```
+
+**Note:** The path parameter must end with `.ipynb` to ensure it's a valid notebook file. The tool creates a new empty notebook with no cells.
+
 #### list_nbs
 Lists all notebook files under a specified directory, recursively, providing comprehensive information about each notebook including metadata and access URLs.
 

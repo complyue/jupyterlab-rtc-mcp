@@ -9,6 +9,8 @@ This MCP server supports both stdio and HTTP transport for communication with AI
 - Read and modify notebook content
 - Execute code cells
 - Collaborate with human users in real-time
+- Manage documents with real-time collaboration
+- Handle URL integration for seamless access
 
 ## Transport Options
 
@@ -146,17 +148,17 @@ export LOG_LEVEL=info
 
 The MCP server provides the following categories of tools:
 
-### RTC Session Management
+### URL Tools
 
-- **end_nb_session**: End a real-time collaboration session for a notebook
-- **query_nb_sessions**: Query the status of real-time collaboration sessions for notebooks in a directory
-- **Automatic Timeout**: Sessions are automatically terminated after a period of inactivity (configurable via command line)
+- **get_base_url**: Retrieves the base URL of the JupyterLab server for use in constructing full URLs
+- **nb_path_from_url**: Extracts the notebook path from a full JupyterLab URL with proper URL decoding
 
-### Notebook Operations
+### Notebook RTC Tools
 
+- **create_notebook**: Create a new empty notebook in JupyterLab at the specified path
 - **list_nbs**: List all notebook files under a specified directory, including URLs for direct access
 - **get_nb_stat**: Get status information about a notebook, including cell count and kernel information
-- **read_nb_cells**: Read multiple cells by specifying ranges
+- **read_nb_cells**: Read multiple cells by specifying ranges with truncation support
 - **modify_nb_cells**: Modify multiple cells by specifying ranges, with optional execution
 - **insert_nb_cells**: Insert multiple cells at a specified location, with optional execution
 - **delete_nb_cells**: Delete multiple cells by specifying ranges
@@ -165,7 +167,14 @@ The MCP server provides the following categories of tools:
 - **list_available_kernels**: List all available kernels on the JupyterLab server
 - **assign_nb_kernel**: Assign a specific kernel to a notebook
 
-### Document Management
+### Document RTC Tools
+
+- **get_document_content**: Get document content using real-time collaboration with truncation support
+- **insert_document_text**: Insert text at a specific position in a document using real-time collaboration
+- **delete_document_text**: Delete text from a specific position in a document using real-time collaboration
+- **replace_document_text**: Replace text in a specific range in a document using real-time collaboration
+
+### Document Management Tools
 
 - **list_documents**: List available documents in JupyterLab from a specified path, including URLs for direct access
 - **create_document**: Create a new document in JupyterLab
@@ -175,14 +184,13 @@ The MCP server provides the following categories of tools:
 - **copy_document**: Copy a document in JupyterLab
 - **overwrite_document**: Overwrite the entire content of a document
 
-### RTC Document Operations
+### RTC Session Management Tools
 
-- **get_document_content**: Get document content using real-time collaboration with truncation support
-- **insert_document_text**: Insert text at a specific position in a document using real-time collaboration
-- **delete_document_text**: Delete text from a specific position in a document using real-time collaboration
-- **replace_document_text**: Replace text in a specific range in a document using real-time collaboration
-- **end_document_session**: End a real-time collaboration session for a document
+- **end_nb_session**: End a real-time collaboration session for a notebook
+- **query_nb_sessions**: Query the status of real-time collaboration sessions for notebooks in a directory
 - **query_document_session**: Query the status of a real-time collaboration session for a document
+- **end_document_session**: End a real-time collaboration session for a document
+- **Automatic Timeout**: Sessions are automatically terminated after a period of inactivity (configurable via command line)
 
 For detailed specifications of each tool, including parameters, return values, and examples, please refer to [DESIGN.md](DESIGN.md).
 
@@ -200,22 +208,28 @@ cd jupyterlab-rtc-mcp
 ```
 jupyterlab-rtc-mcp/
 ├── src/
-│   ├── index.ts                 # Main server entry point
+│   ├── index.ts                 # Main server entry point with CLI argument parsing
 │   ├── server/
-│   │   ├── mcp-server.ts        # MCP server implementation
+│   │   ├── mcp-server.ts        # MCP server implementation with tool registration
 │   │   └── transport/
-│   │       ├── stdio-transport.ts # Stdio transport handler
-│   │       └── http-transport.ts  # HTTP transport handler
+│   │       ├── http-transport.ts # HTTP transport handler
+│   │       └── stdio-transport.ts # Stdio transport handler
 │   ├── jupyter/
-│   │   ├── adapter.ts           # JupyterLab adapter
-│   │   ├── websocket-client.ts   # WebSocket client for JupyterLab
-│   │   └── document-session.ts   # Document session management
-│   └── tools/
-│       ├── notebook-tools.ts    # Notebook operation tools
-│       └── document-tools.ts    # Document management tools
-├── package.json
-├── tsconfig.json
-└── README.md
+│   │   ├── adapter.ts           # JupyterLab adapter for RTC communication
+│   │   ├── cookie-manager.ts    # Cookie management for authentication
+│   │   ├── document-session.ts  # Document session management
+│   │   └── notebook-session.ts  # Notebook session management
+│   ├── tools/
+│   │   ├── notebook-tools.ts    # Notebook operation tools
+│   │   ├── document-tools.ts    # Document management tools
+│   │   └── url-tools.ts         # URL handling tools
+│   └── utils/
+│       └── logger.ts           # Logging utility
+├── package.json                 # Project dependencies and scripts
+├── tsconfig.json               # TypeScript configuration
+├── README.md                   # Project documentation
+├── DESIGN.md                   # Detailed tool specifications
+└── AGENTS.md                   # AI agent guidelines
 ```
 
 ### Install Dependencies
