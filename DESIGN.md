@@ -1036,12 +1036,22 @@ The JupyterLab RTC MCP Server uses an implicit session management approach with 
 
 The session timeout can be configured using the `--session-timeout` command line argument:
 
+**For stdio mode (production):**
 ```bash
 # Set session timeout to 10 minutes
 npx jupyterlab-rtc-mcp --session-timeout 10
 
 # Set session timeout to 1 minute
 npx jupyterlab-rtc-mcp --session-timeout 1
+```
+
+**For HTTP mode (debugging):**
+```bash
+# Set session timeout to 10 minutes
+npx jupyterlab-rtc-mcp-http --session-timeout 10
+
+# Set session timeout to 1 minute
+npx jupyterlab-rtc-mcp-http --session-timeout 1
 ```
 
 The timeout value is specified in minutes. If not provided, the default timeout is 5 minutes.
@@ -1063,6 +1073,25 @@ Tools are organized into logical categories:
 2. **Document RTC**: Real-time collaboration features for document editing
 3. **Document Management**: Basic document operations without real-time collaboration
 4. **RTC Session Management**: Tools for querying and ending notebook sessions
+
+### Server Architecture
+
+The JupyterLab RTC MCP Server now provides two separate entry points for different transport modes:
+
+1. **Stdio Mode (Production)**:
+   - Entry point: `src/index.ts`
+   - Binary: `jupyterlab-rtc-mcp`
+   - Minimal runtime footprint with only stdio dependencies
+   - Optimized for production use with AI agents
+
+2. **HTTP Mode (Debugging)**:
+   - Entry point: `src/http-server.ts`
+   - Binary: `jupyterlab-rtc-mcp-http`
+   - Includes HTTP-specific dependencies (express, cors)
+   - Supports IP binding with `--ip` argument (default: 127.0.0.1)
+   - Optimized for development and debugging
+
+This separation ensures that the production stdio bundle has minimal size while providing full HTTP functionality for debugging when needed.
 
 ## Dependencies
 

@@ -9,7 +9,8 @@ The project follows a modular TypeScript architecture with clear separation of c
 ```
 jupyterlab-rtc-mcp/
 ├── src/
-│   ├── index.ts                 # Main server entry point with CLI argument parsing
+│   ├── index.ts                 # Stdio server entry point (production)
+│   ├── http-server.ts           # HTTP server entry point (debugging)
 │   ├── server/
 │   │   ├── mcp-server.ts        # MCP server implementation with tool registration
 │   │   └── transport/
@@ -50,11 +51,14 @@ jupyterlab-rtc-mcp/
 - `npm run build` - Compile TypeScript source code to JavaScript in the `dist/` directory
 - `npm run lint` - Run ESLint to check code quality and style
 - `npm run format` - Format code using Prettier
+- `npm run bundle` - Create optimized stdio-only bundle (minimal size)
 
 ### Development Environment Setup
 
 1. Install dependencies: `npm install`
 2. Build the project: `npm run build`
+3. Create optimized bundles:
+   - For production: `npm run bundle`
 
 ## Code Style and Conventions
 
@@ -96,7 +100,10 @@ jupyterlab-rtc-mcp/
 
 ### MCP Protocol Implementation
 
-The server implements the Model Context Protocol (MCP) to communicate with AI agents. It supports both HTTP and stdio transports for communication.
+The server implements the Model Context Protocol (MCP) to communicate with AI agents. It provides two separate entry points for different transport modes:
+
+1. **Stdio Mode (Production)**: Optimized for production use with minimal runtime footprint
+2. **HTTP Mode (Debugging)**: Full HTTP functionality with IP binding support for development
 
 ### JupyterLab Integration
 
@@ -139,6 +146,37 @@ export JUPYTERLAB_TOKEN=your-token-here
 export LOG_LEVEL=debug
 ```
 
+### Command Line Options
+
+#### Stdio Mode (Production)
+
+```bash
+# Use stdio transport (default, for production)
+npx jupyterlab-rtc-mcp
+
+# Set session timeout (in minutes)
+npx jupyterlab-rtc-mcp --session-timeout 10
+```
+
+#### HTTP Mode (Debugging)
+
+```bash
+# Use HTTP transport (for debugging)
+npx jupyterlab-rtc-mcp-http
+
+# Use HTTP transport on a specific port
+npx jupyterlab-rtc-mcp-http --port 3080
+
+# Use HTTP transport on a specific IP address
+npx jupyterlab-rtc-mcp-http --ip 0.0.0.0
+
+# Use HTTP transport on a specific IP and port
+npx jupyterlab-rtc-mcp-http --ip 0.0.0.0 --port 3080
+
+# Set session timeout (in minutes)
+npx jupyterlab-rtc-mcp-http --session-timeout 10
+```
+
 ### MCP Configuration
 
 To use the MCP server with an AI agent, configure the agent to use the server as an MCP provider:
@@ -169,6 +207,11 @@ To use the MCP server with an AI agent, configure the agent to use the server as
 - `yjs`: CRDT library for real-time collaboration
 - `y-websocket`: WebSocket provider for Yjs
 - `zod`: Schema validation
+
+### HTTP Mode Dependencies
+
+- `express`: Web framework for HTTP server
+- `cors`: CORS middleware for HTTP server
 
 ### Development Dependencies
 

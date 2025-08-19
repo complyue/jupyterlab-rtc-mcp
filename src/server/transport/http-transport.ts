@@ -18,15 +18,18 @@ export class JupyterLabHTTPTransport {
   private server?: Server;
   private transports: { [sessionId: string]: StreamableHTTPServerTransport };
   private port: number;
+  private host: string;
   // eslint-disable-next-line no-unused-vars
   private mcpServer?: { connect: (_transport: Transport) => Promise<void> };
 
   /**
    * Create a new HTTP transport
    * @param port Port number to listen on
+   * @param host Host IP address to bind to
    */
-  constructor(port: number = 3000) {
+  constructor(port: number = 3000, host: string = '127.0.0.1') {
     this.port = port;
+    this.host = host;
     this.transports = {};
     this.app = express();
 
@@ -126,12 +129,12 @@ export class JupyterLabHTTPTransport {
    */
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.server = this.app.listen(this.port, (error?: Error) => {
+      this.server = this.app.listen(this.port, this.host, (error?: Error) => {
         if (error) {
-          logger.error(`[ERROR] Failed to start HTTP server on port ${this.port}:`, error);
+          logger.error(`[ERROR] Failed to start HTTP server on ${this.host}:${this.port}:`, error);
           reject(error);
         } else {
-          logger.info(`JupyterLab RTC MCP HTTP server listening on port ${this.port}`);
+          logger.info(`JupyterLab RTC MCP HTTP server listening on ${this.host}:${this.port}`);
           resolve();
         }
       });
@@ -159,5 +162,12 @@ export class JupyterLabHTTPTransport {
    */
   getPort(): number {
     return this.port;
+  }
+
+  /**
+   * Get the host the server is bound to
+   */
+  getHost(): string {
+    return this.host;
   }
 }

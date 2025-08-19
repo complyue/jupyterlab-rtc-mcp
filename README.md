@@ -14,13 +14,14 @@ This MCP server supports both stdio and HTTP transport for communication with AI
 
 ## Transport Options
 
-The server supports two transport modes:
+The server provides two separate entry points for different transport modes:
 
 ### 1. Stdio Transport (Production)
 
 - **Default mode** for production use
 - Communicates via standard input/output
 - Ideal for integration with AI agents
+- Minimal runtime footprint and bundle size
 - Command: `npx jupyterlab-rtc-mcp`
 
 ### 2. HTTP Transport (Debugging)
@@ -28,7 +29,8 @@ The server supports two transport modes:
 - **Debug mode** for development and testing
 - Provides HTTP endpoint with streamable JSON responses
 - Useful for debugging and manual testing
-- Command: `npx jupyterlab-rtc-mcp --transport http --port 3000`
+- Separate entry point with HTTP-specific dependencies
+- Command: `npx jupyterlab-rtc-mcp-http --port 3000`
 
 ## Features
 
@@ -66,27 +68,35 @@ Assuming your Jupyter Lab server is started with tooken auth:
 jupyter lab --IdentityProvider.token=your-token-here
 ```
 
-## Usage
-
 ### Command Line Options
 
-The server supports the following command line options:
+#### Stdio Transport (Production)
 
 ```bash
 # Use stdio transport (default, for production)
 npx jupyterlab-rtc-mcp
 
-# Use HTTP transport (for debugging)
-npx jupyterlab-rtc-mcp --transport http
-
-# Use HTTP transport on a specific port
-npx jupyterlab-rtc-mcp --transport http --port 3080
-
 # Set session timeout (in minutes)
 npx jupyterlab-rtc-mcp --session-timeout 10
+```
 
-# Show help
-npx jupyterlab-rtc-mcp --help
+#### HTTP Transport (Debugging)
+
+```bash
+# Use HTTP transport (for debugging)
+npx jupyterlab-rtc-mcp-http
+
+# Use HTTP transport on a specific port
+npx jupyterlab-rtc-mcp-http --port 3080
+
+# Use HTTP transport on a specific IP address
+npx jupyterlab-rtc-mcp-http --ip 0.0.0.0
+
+# Use HTTP transport on a specific IP and port
+npx jupyterlab-rtc-mcp-http --ip 0.0.0.0 --port 3080
+
+# Set session timeout (in minutes)
+npx jupyterlab-rtc-mcp-http --session-timeout 10
 ```
 
 ### Integrating with AI Agents
@@ -119,7 +129,10 @@ export JUPYTERLAB_TOKEN=your-token-here
 export LOG_LEVEL=info
 
 # Start the server with HTTP transport
-npx jupyterlab-rtc-mcp --transport http --port 3000
+npx jupyterlab-rtc-mcp-http --port 3000
+
+# Start the server accessible from any network interface
+npx jupyterlab-rtc-mcp-http --ip 0.0.0.0 --port 3000
 
 # Then send requests to the HTTP endpoint
 curl -X POST http://localhost:3000/mcp \
@@ -208,7 +221,8 @@ cd jupyterlab-rtc-mcp
 ```
 jupyterlab-rtc-mcp/
 ├── src/
-│   ├── index.ts                 # Main server entry point with CLI argument parsing
+│   ├── index.ts                 # Stdio server entry point (production)
+│   ├── http-server.ts           # HTTP server entry point (debugging)
 │   ├── server/
 │   │   ├── mcp-server.ts        # MCP server implementation with tool registration
 │   │   └── transport/
@@ -241,7 +255,11 @@ npm install
 ### Build the Project
 
 ```bash
+# Build both stdio and HTTP versions
 npm run build
+
+# Create optimized bundle for production
+npm run bundle    # Create stdio-only bundle (minimal size)
 ```
 
 ## Troubleshooting
@@ -276,7 +294,10 @@ The MCP Inspector is a powerful tool for debugging MCP servers interactively:
 
 ```bash
 # Start server with HTTP transport
-npx jupyterlab-rtc-mcp --transport http --port 3000
+npx jupyterlab-rtc-mcp-http --port 3000
+
+# Start server accessible from any network interface
+npx jupyterlab-rtc-mcp-http --ip 0.0.0.0 --port 3000
 
 # Connect with MCP Inspector
 npx @modelcontextprotocol/inspector
@@ -310,7 +331,10 @@ export JUPYTERLAB_URL=http://localhost:8888
 export JUPYTERLAB_TOKEN=your-token-here
 
 # Start server with debug logging
-LOG_LEVEL=debug npx jupyterlab-rtc-mcp --transport http --port 3000
+LOG_LEVEL=debug npx jupyterlab-rtc-mcp-http --port 3000
+
+# Start server accessible from any network interface
+LOG_LEVEL=debug npx jupyterlab-rtc-mcp-http --ip 0.0.0.0 --port 3000
 
 # Test connection
 curl -X POST http://localhost:3000/mcp \
