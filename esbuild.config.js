@@ -1,4 +1,5 @@
 import esbuild from 'esbuild';
+import process from 'process';
 
 esbuild.build({
   entryPoints: ['src/index.ts'],
@@ -10,4 +11,13 @@ esbuild.build({
   sourcemap: false,
   minify: true,
   keepNames: false,
+  banner: {
+    js: `
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+`,
+  },
+  define: {
+    'process.env.NODE_ENV': '"production"',
+  },
 }).catch(() => process.exit(1));
