@@ -135,9 +135,7 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error(
-        `Failed to list documents from ${path || "root"}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.error(`Failed to list documents from ${path || "root"}`, error);
       throw new Error(
         `Failed to list documents: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -249,7 +247,8 @@ export class DocumentTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to create document at ${path}: ${error instanceof Error ? error.message : String(error)}. Document type: ${type || "markdown"}`,
+        `Failed to create document at ${path}. Document type: ${type || "markdown"}`,
+        error,
       );
       throw new Error(
         `Failed to create document: ${error instanceof Error ? error.message : String(error)}`,
@@ -398,7 +397,8 @@ export class DocumentTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to get document info for ${path}: ${error instanceof Error ? error.message : String(error)}. Include content: ${includeContent}, Max content: ${maxContent}`,
+        `Failed to get document info for ${path}. Include content: ${includeContent}, Max content: ${maxContent}`,
+        error,
       );
       throw new Error(
         `Failed to get document info: ${error instanceof Error ? error.message : String(error)}`,
@@ -470,9 +470,7 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error(
-        `Failed to delete document at ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.error(`Failed to delete document at ${path}`, error);
       throw new Error(
         `Failed to delete document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -554,7 +552,8 @@ export class DocumentTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to rename document from ${path} to ${newPath}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to rename document from ${path} to ${newPath}`,
+        error,
       );
       throw new Error(
         `Failed to rename document: ${error instanceof Error ? error.message : String(error)}`,
@@ -637,7 +636,8 @@ export class DocumentTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to copy document from ${path} to ${copyPath}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to copy document from ${path} to ${copyPath}`,
+        error,
       );
       throw new Error(
         `Failed to copy document: ${error instanceof Error ? error.message : String(error)}`,
@@ -742,7 +742,8 @@ export class DocumentTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to modify document at ${path}: ${error instanceof Error ? error.message : String(error)}. Document type: ${type}`,
+        `Failed to modify document at ${path}. Document type: ${type}`,
+        error,
       );
       throw new Error(
         `Failed to modify document: ${error instanceof Error ? error.message : String(error)}`,
@@ -809,7 +810,8 @@ export class DocumentTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to insert document text at position ${position} in document ${path}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to insert document text at position ${position} in document ${path}`,
+        error,
       );
       throw new Error(
         `Failed to insert document text: ${error instanceof Error ? error.message : String(error)}`,
@@ -877,7 +879,8 @@ export class DocumentTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to delete ${length} characters from position ${position} in document ${path}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to delete ${length} characters from position ${position} in document ${path}`,
+        error,
       );
       throw new Error(
         `Failed to delete document text: ${error instanceof Error ? error.message : String(error)}`,
@@ -948,7 +951,8 @@ export class DocumentTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to replace ${length} characters at position ${position} in document ${path}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to replace ${length} characters at position ${position} in document ${path}`,
+        error,
       );
       throw new Error(
         `Failed to replace document text: ${error instanceof Error ? error.message : String(error)}`,
@@ -1035,7 +1039,8 @@ export class DocumentTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to get document content for ${path}: ${error instanceof Error ? error.message : String(error)}. Max content: ${maxContent}`,
+        `Failed to get document content for ${path}. Max content: ${maxContent}`,
+        error,
       );
       throw new Error(
         `Failed to get document content: ${error instanceof Error ? error.message : String(error)}`,
@@ -1063,9 +1068,7 @@ export class DocumentTools {
     try {
       return await this.jupyterAdapter.endDocumentSession({ path });
     } catch (error) {
-      logger.error(
-        `Failed to end document session for ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.error(`Failed to end document session for ${path}`, error);
       throw new Error(
         `Failed to end document session: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1098,9 +1101,7 @@ export class DocumentTools {
     try {
       return await this.jupyterAdapter.queryDocumentSession({ path });
     } catch (error) {
-      logger.error(
-        `Failed to query document session for ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.error(`Failed to query document session for ${path}`, error);
       throw new Error(
         `Failed to query document session: ${error instanceof Error ? error.message : String(error)}`,
       );

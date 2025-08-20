@@ -128,7 +128,8 @@ export class NotebookTools {
         response = await ServerConnection.makeRequest(url, init, settings);
       } catch (error) {
         logger.error(
-          `Network error in listNotebooks: ${error instanceof Error ? error.message : String(error)}. URL: ${url}, Method: ${init.method}, Base URL: ${settings.baseUrl}`,
+          `Network error in listNotebooks. URL: ${url}, Method: ${init.method}, Base URL: ${settings.baseUrl}`,
+          error,
         );
         throw new Error(
           `Network error when accessing ${url}: ${error instanceof Error ? error.message : String(error)}`,
@@ -143,7 +144,8 @@ export class NotebookTools {
           parsedData = JSON.parse(data);
         } catch (error) {
           logger.error(
-            `Not a JSON response body in listNotebooks: ${error instanceof Error ? error.message : String(error)}. Response status: ${response.status}, Response text: ${await response.text().catch(() => "Could not read response text")}`,
+            `Not a JSON response body in listNotebooks. Response status: ${response.status}, Response text: ${await response.text().catch(() => "Could not read response text")}`,
+            error,
           );
         }
       }
@@ -174,9 +176,7 @@ export class NotebookTools {
         try {
           response = await ServerConnection.makeRequest(url, init, settings);
         } catch (error) {
-          logger.error(
-            `Network error in extractNotebooks: ${error instanceof Error ? error.message : String(error)}. URL: ${url}`,
-          );
+          logger.error(`Network error in extractNotebooks. URL: ${url}`, error);
           throw new Error(
             `Network error when accessing ${url}: ${error instanceof Error ? error.message : String(error)}`,
           );
@@ -190,7 +190,8 @@ export class NotebookTools {
             parsedData = JSON.parse(data);
           } catch (error) {
             logger.error(
-              `Not a JSON response body in extractNotebooks: ${error instanceof Error ? error.message : String(error)}. Response status: ${response.status}`,
+              `Not a JSON response body in extractNotebooks. Response status: ${response.status}`,
+              error,
             );
           }
         }
@@ -238,7 +239,8 @@ export class NotebookTools {
                   } catch (error) {
                     // Log the error but continue processing other directories
                     logger.warn(
-                      `Failed to access subdirectory ${item.path}: ${error instanceof Error ? error.message : String(error)}`,
+                      `Failed to access subdirectory ${item.path}`,
+                      error,
                     );
                   }
                 }
@@ -278,9 +280,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      logger.error(
-        `Failed to list notebooks from ${path || "root"}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.error(`Failed to list notebooks from ${path || "root"}`, error);
       throw new Error(
         `Failed to list notebooks from ${path || "root"}: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -422,7 +422,8 @@ export class NotebookTools {
         response = await ServerConnection.makeRequest(url, init, settings);
       } catch (error) {
         logger.error(
-          `Network error in getNotebookStatus: ${error instanceof Error ? error.message : String(error)}. URL: ${url}, Notebook path: ${path}, Base URL: ${settings.baseUrl}`,
+          `Network error in getNotebookStatus. URL: ${url}, Notebook path: ${path}, Base URL: ${settings.baseUrl}`,
+          error,
         );
         throw new Error(
           `Network error when accessing ${url} for notebook ${path}: ${error instanceof Error ? error.message : String(error)}`,
@@ -437,7 +438,8 @@ export class NotebookTools {
           parsedData = JSON.parse(data);
         } catch (error) {
           logger.error(
-            `Not a JSON response body in getNotebookStatus: ${error instanceof Error ? error.message : String(error)}. Response status: ${response.status}, Response text: ${await response.text().catch(() => "Could not read response text")}`,
+            `Not a JSON response body in getNotebookStatus. Response status: ${response.status}, Response text: ${await response.text().catch(() => "Could not read response text")}`,
+            error,
           );
         }
       }
@@ -473,9 +475,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      logger.error(
-        `Failed to get status for notebook ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.error(`Failed to get status for notebook ${path}`, error);
       throw new Error(
         `Failed to get status for notebook ${path}: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -765,7 +765,8 @@ export class NotebookTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to read cells from notebook ${path}: ${error instanceof Error ? error.message : String(error)}. Cell ranges: ${JSON.stringify(ranges)}`,
+        `Failed to read cells from notebook ${path}. Cell ranges: ${JSON.stringify(ranges)}`,
+        error,
       );
       throw new Error(
         `Failed to read cells from notebook ${path}: ${error instanceof Error ? error.message : String(error)}`,
@@ -872,7 +873,8 @@ export class NotebookTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to modify cells in notebook ${path}: ${error instanceof Error ? error.message : String(error)}. Modifications count: ${modifications.length}`,
+        `Failed to modify cells in notebook ${path}. Modifications count: ${modifications.length}`,
+        error,
       );
       throw new Error(
         `Failed to modify cells in notebook ${path}: ${error instanceof Error ? error.message : String(error)}`,
@@ -946,7 +948,8 @@ export class NotebookTools {
         response = await ServerConnection.makeRequest(url, init, settings);
       } catch (error) {
         logger.error(
-          `Network error in createNotebook: ${error instanceof Error ? error.message : String(error)}. URL: ${url}, Notebook path: ${path}, Base URL: ${settings.baseUrl}`,
+          `Network error in createNotebook. URL: ${url}, Notebook path: ${path}, Base URL: ${settings.baseUrl}`,
+          error,
         );
         throw new Error(
           `Network error when creating notebook at ${url}: ${error instanceof Error ? error.message : String(error)}`,
@@ -964,7 +967,7 @@ export class NotebookTools {
         }
 
         logger.error(
-          `Server error in createNotebook: ${response.status} ${response.statusText}. URL: ${url}, Notebook path: ${path}, Error details: ${errorDetails}`,
+          `Server error in createNotebook. URL: ${url}, Notebook path: ${path}, Error details: ${errorDetails}`,
         );
         throw new Error(
           `Server returned ${response.status} when creating notebook at ${path}: ${response.statusText}${errorDetails}`,
@@ -980,9 +983,7 @@ export class NotebookTools {
         ],
       };
     } catch (error) {
-      logger.error(
-        `Failed to create notebook at ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.error(`Failed to create notebook at ${path}`, error);
       throw new Error(
         `Failed to create notebook at ${path}: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1090,7 +1091,8 @@ export class NotebookTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to insert cells into notebook ${path} at position ${position}: ${error instanceof Error ? error.message : String(error)}. Cells count: ${cells.length}`,
+        `Failed to insert cells into notebook ${path} at position ${position}. Cells count: ${cells.length}`,
+        error,
       );
       throw new Error(
         `Failed to insert cells into notebook ${path} at position ${position}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1174,7 +1176,8 @@ export class NotebookTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to delete cells from notebook ${path}: ${error instanceof Error ? error.message : String(error)}. Ranges: ${JSON.stringify(ranges)}`,
+        `Failed to delete cells from notebook ${path}. Ranges: ${JSON.stringify(ranges)}`,
+        error,
       );
       throw new Error(
         `Failed to delete cells from notebook ${path}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1236,7 +1239,8 @@ export class NotebookTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to restart kernel for notebook ${path}: ${error instanceof Error ? error.message : String(error)}. Clear outputs: ${!!clear_outputs}, Execute cells: ${!!exec}, Kernel name: ${kernel_name || "default"}`,
+        `Failed to restart kernel for notebook ${path}. Clear outputs: ${!!clear_outputs}, Execute cells: ${!!exec}, Kernel name: ${kernel_name || "default"}`,
+        error,
       );
       throw new Error(
         `Failed to restart kernel for notebook ${path}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1296,7 +1300,8 @@ export class NotebookTools {
         );
       } catch (error) {
         logger.error(
-          `Network error in listAvailableKernels: ${error instanceof Error ? error.message : String(error)}. URL: ${kernelsUrl}, Base URL: ${settings.baseUrl}`,
+          `Network error in listAvailableKernels. URL: ${kernelsUrl}, Base URL: ${settings.baseUrl}`,
+          error,
         );
         throw new Error(
           `Network error when accessing ${kernelsUrl}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1311,7 +1316,8 @@ export class NotebookTools {
           parsedKernelsData = JSON.parse(kernelsData);
         } catch (error) {
           logger.error(
-            `Not a JSON response body in listAvailableKernels: ${error instanceof Error ? error.message : String(error)}. Response status: ${kernelsResponse.status}, Response text: ${await kernelsResponse.text().catch(() => "Could not read response text")}`,
+            `Not a JSON response body in listAvailableKernels. Response status: ${kernelsResponse.status}, Response text: ${await kernelsResponse.text().catch(() => "Could not read response text")}`,
+            error,
           );
         }
       }
@@ -1350,7 +1356,8 @@ export class NotebookTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to list available kernels: ${error instanceof Error ? error.message : String(error)}. Base URL: ${this.jupyterAdapter["baseUrl"]}`,
+        `Failed to list available kernels. Base URL: ${this.jupyterAdapter["baseUrl"]}`,
+        error,
       );
       throw new Error(
         `Failed to list available kernels: ${error instanceof Error ? error.message : String(error)}`,
@@ -1437,7 +1444,8 @@ export class NotebookTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to assign notebook kernel: ${error instanceof Error ? error.message : String(error)}. Notebook path: ${path}, Kernel name: ${kernel_name}`,
+        `Failed to assign notebook kernel. Notebook path: ${path}, Kernel name: ${kernel_name}`,
+        error,
       );
 
       return {
@@ -1549,7 +1557,8 @@ export class NotebookTools {
       };
     } catch (error) {
       logger.error(
-        `Failed to execute cells in notebook ${path}: ${error instanceof Error ? error.message : String(error)}. Ranges: ${JSON.stringify(ranges)}`,
+        `Failed to execute cells in notebook ${path}. Ranges: ${JSON.stringify(ranges)}`,
+        error,
       );
       throw new Error(
         `Failed to execute cells in notebook ${path}: ${error instanceof Error ? error.message : String(error)}`,

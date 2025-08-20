@@ -74,12 +74,26 @@ export class Logger {
    * Log a warning message
    * @param message The message to log
    */
-  warn(message: string): void {
+  warn(message: string, error?: unknown): void {
     if (currentLogLevel >= 1) {
       const timestamp = new Date().toISOString();
       const contextPrefix = this.context ? `[${this.context}] ` : "";
 
-      console.error(`${timestamp} [WARN] ${contextPrefix}${message}`);
+      let errorMessage = "";
+      let stackTrace = "";
+
+      if (error) {
+        if (error instanceof Error) {
+          errorMessage = `: ${error.message}`;
+          stackTrace = error.stack ? `\n${error.stack}` : "";
+        } else {
+          errorMessage = `: ${JSON.stringify(error)}`;
+        }
+      }
+
+      console.error(
+        `${timestamp} [WARN] ${contextPrefix}${message}${errorMessage}${stackTrace}`,
+      );
     }
   }
 
