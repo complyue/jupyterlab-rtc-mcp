@@ -125,6 +125,7 @@ export class URLTools {
       const knownPrefixes = [
         "tree/",
         "notebooks/",
+        "nbclassic/notebooks/",
         "edit/",
         "view/",
         "lab/tree/",
