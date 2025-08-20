@@ -5,11 +5,11 @@ import WebSocket from "ws";
 
 class CookieWS extends WebSocket {
   constructor(url: string | URL, options?: WebSocket.ClientOptions) {
-    const cookieHeader = cookieManager.getCookieHeader();
+    const sessionHeaders = cookieManager.sessionHeaders();
     super(url, {
       ...options,
       headers: {
-        Cookie: cookieHeader,
+        ...sessionHeaders,
       },
     });
   }

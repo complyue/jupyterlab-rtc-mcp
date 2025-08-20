@@ -171,11 +171,7 @@ export class JupyterLabAdapter {
       }
 
       // Create a new document session
-      const documentSession = new TextDocumentSession(
-        session,
-        this.baseUrl,
-        this.token,
-      );
+      const documentSession = new TextDocumentSession(session, this);
 
       this.documentSessions.set(session.fileId, documentSession);
 
@@ -215,8 +211,7 @@ export class JupyterLabAdapter {
       const notebookSession = new NotebookSession(
         session,
         this._kernelManager,
-        this.baseUrl,
-        this.token,
+        this,
       );
 
       // Store the original path for later use with contents API
@@ -512,27 +507,7 @@ export class JupyterLabAdapter {
       method: "GET",
     };
 
-    // Add authorization header if token is provided
-    if (this.token) {
-      init.headers = {
-        ...init.headers,
-        Authorization: `token ${this.token}`,
-      };
-    }
-
-    // Add cookies if available
-    if (cookieManager.hasCookies()) {
-      init.headers = {
-        ...init.headers,
-        Cookie: cookieManager.getCookieHeader(),
-      };
-    }
-
-    let response: Response;
-    response = await ServerConnection.makeRequest(url, init, settings);
-
-    // Store cookies from response
-    cookieManager.parseResponseHeaders(response.headers);
+    const response = await this.makeJupyterRequest(url, init);
 
     let dataText: string = await response.text();
     let data = null;
@@ -621,6 +596,47 @@ export class JupyterLabAdapter {
   }
 
   /**
+   * Make an HTTP request to JupyterLab with proper authentication and headers
+   * @param url URL to request
+   * @param init Request initialization options
+   * @returns Promise that resolves to the response
+   */
+  public async makeJupyterRequest(
+    url: string,
+    init: RequestInit = {},
+  ): Promise<Response> {
+    const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
+
+    // Initialize headers if not provided
+    if (!init.headers) {
+      init.headers = {};
+    }
+
+    // Add authorization header if token is provided
+    if (this.token) {
+      init.headers = {
+        ...init.headers,
+        Authorization: `token ${this.token}`,
+      };
+    }
+
+    // Add session headers (cookies and XSRF token)
+    const sessionHeaders = cookieManager.sessionHeaders();
+    init.headers = {
+      ...init.headers,
+      ...sessionHeaders,
+    };
+
+    // Make the request
+    const response = await ServerConnection.makeRequest(url, init, settings);
+
+    // Store cookies from response
+    cookieManager.parseResponseHeaders(response.headers);
+
+    return response;
+  }
+
+  /**
    * Request a document session from JupyterLab
    * @param path Path to the document
    * @param type Document type
@@ -642,27 +658,7 @@ export class JupyterLabAdapter {
       body: JSON.stringify({ format: "json", type }),
     };
 
-    // Add authorization header if token is provided
-    if (this.token) {
-      init.headers = {
-        ...init.headers,
-        Authorization: `token ${this.token}`,
-      };
-    }
-
-    // Add cookies if available
-    if (cookieManager.hasCookies()) {
-      init.headers = {
-        ...init.headers,
-        Cookie: cookieManager.getCookieHeader(),
-      };
-    }
-
-    let response: Response;
-    response = await ServerConnection.makeRequest(url, init, settings);
-
-    // Store cookies from response
-    cookieManager.parseResponseHeaders(response.headers);
+    const response = await this.makeJupyterRequest(url, init);
 
     let dataText: string = await response.text();
     let data: unknown = null;

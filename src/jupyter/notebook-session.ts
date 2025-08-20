@@ -4,8 +4,7 @@ import { IKernelConnection } from "@jupyterlab/services/lib/kernel/kernel.js";
 import * as Y from "yjs";
 
 import { logger } from "../utils/logger.js";
-import { executeJupyterCell } from "./adapter.js";
-import { cookieManager } from "./cookie-manager.js";
+import { executeJupyterCell, JupyterLabAdapter } from "./adapter.js";
 import { DocumentSession, ISessionModel } from "./document-session.js";
 
 /**
@@ -22,12 +21,11 @@ export class NotebookSession extends DocumentSession {
   constructor(
     session: ISessionModel,
     kernelManager: KernelManager,
-    baseUrl: string,
-    token?: string,
+    jupyterAdapter: JupyterLabAdapter,
   ) {
     // Create YNotebook which already has an embedded Y.Doc
     const yNotebook = new YNotebook();
-    super(session, baseUrl, token, yNotebook.ydoc);
+    super(session, jupyterAdapter, yNotebook.ydoc);
     this.yNotebook = yNotebook;
     this.kernelManager = kernelManager;
     this.kernelConn = null;
@@ -124,7 +122,9 @@ export class NotebookSession extends DocumentSession {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
 
-      const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
+      const settings = ServerConnection.makeSettings({
+        baseUrl: this.jupyterAdapter.baseUrl,
+      });
 
       // First, try to get the existing session to see if it already exists
       const getSessionUrl = URLExt.join(
@@ -137,32 +137,13 @@ export class NotebookSession extends DocumentSession {
         method: "GET",
       };
 
-      // Add authorization header if token is provided
-      if (this.token) {
-        getInit.headers = {
-          ...getInit.headers,
-          Authorization: `token ${this.token}`,
-        };
-      }
-
-      // Add cookies if available
-      if (cookieManager.hasCookies()) {
-        getInit.headers = {
-          ...getInit.headers,
-          Cookie: cookieManager.getCookieHeader(),
-        };
-      }
-
       let sessionExists = false;
       try {
-        const getResponse = await ServerConnection.makeRequest(
+        const getResponse = await this.jupyterAdapter.makeJupyterRequest(
           getSessionUrl,
           getInit,
-          settings,
         );
         sessionExists = getResponse.ok;
-        // Store cookies from response
-        cookieManager.parseResponseHeaders(getResponse.headers);
       } catch (error) {
         // Session doesn't exist or other error
         logger.debug(
@@ -190,57 +171,48 @@ export class NotebookSession extends DocumentSession {
         }),
       };
 
-      // Add authorization header if token is provided
-      if (this.token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${this.token}`,
-        };
-      }
-
-      // Add cookies if available
-      if (cookieManager.hasCookies()) {
-        init.headers = {
-          ...init.headers,
-          Cookie: cookieManager.getCookieHeader(),
-        };
-      }
-
       let response: Response;
-      response = await ServerConnection.makeRequest(url, init, settings);
+      try {
+        response = await this.jupyterAdapter.makeJupyterRequest(url, init);
 
-      // Store cookies from response
-      cookieManager.parseResponseHeaders(response.headers);
+        let dataText: string = await response.text();
+        let data: unknown = null;
 
-      let dataText: string = await response.text();
-      let data: unknown = null;
+        if (dataText.length > 0) {
+          try {
+            data = JSON.parse(dataText);
+          } catch (error) {
+            logger.error("Not a JSON response body.", error);
+            return null;
+          }
+        }
 
-      if (dataText.length > 0) {
-        try {
-          data = JSON.parse(dataText);
-        } catch (error) {
-          logger.error("Not a JSON response body.", error);
+        if (!response.ok) {
+          logger.error(
+            `Server returned ${response.status}: ${data && typeof data === "object" && "message" in data ? (data as { message: string }).message : dataText}`,
+          );
           return null;
         }
-      }
 
-      if (!response.ok) {
-        logger.error(
-          `Server returned ${response.status}: ${data && typeof data === "object" && "message" in data ? (data as { message: string }).message : dataText}`,
-        );
+        // Extract kernel information from the session response
+        if (
+          data &&
+          typeof data === "object" &&
+          "kernel" in data &&
+          data.kernel
+        ) {
+          const kernel = data.kernel as { id: string; name: string };
+          const kernelConn = this.kernelManager.connectTo({ model: kernel });
+          return kernelConn;
+        }
+
+        return null;
+      } catch (error) {
+        logger.error(`Error requesting kernel session:`, error);
         return null;
       }
-
-      // Extract kernel information from the session response
-      if (data && typeof data === "object" && "kernel" in data && data.kernel) {
-        const kernel = data.kernel as { id: string; name: string };
-        const kernelConn = this.kernelManager.connectTo({ model: kernel });
-        return kernelConn;
-      }
-
-      return null;
     } catch (error) {
-      logger.error(`Error requesting kernel session:`, error);
+      logger.error(`Error in _connectKernel:`, error);
       return null;
     }
   }

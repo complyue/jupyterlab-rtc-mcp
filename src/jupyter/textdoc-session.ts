@@ -1,6 +1,7 @@
 import * as Y from "yjs";
 import { ISessionModel } from "./document-session.js";
 import { DocumentSession } from "./document-session.js";
+import { JupyterLabAdapter } from "./adapter.js";
 
 /**
  * TextDocumentSession represents a session with a JupyterLab text document
@@ -11,10 +12,10 @@ import { DocumentSession } from "./document-session.js";
 export class TextDocumentSession extends DocumentSession {
   private yText: Y.Text;
 
-  constructor(session: ISessionModel, baseUrl: string, token?: string) {
+  constructor(session: ISessionModel, jupyterAdapter: JupyterLabAdapter) {
     // Create a Y.Doc for the text document
     const ydoc = new Y.Doc();
-    super(session, baseUrl, token, ydoc);
+    super(session, jupyterAdapter, ydoc);
 
     // Get or create the shared text object
     this.yText = ydoc.getText("content");

@@ -1,8 +1,8 @@
-import { URLExt } from "@jupyterlab/coreutils";
 import { PromiseDelegate } from "@lumino/coreutils";
 import * as Y from "yjs";
 import { CookieWebsocketProvider } from "./websocket-provider.js";
 import { logger } from "../utils/logger.js";
+import { JupyterLabAdapter } from "./adapter.js";
 
 export interface ISessionModel {
   format: string;
@@ -20,8 +20,7 @@ export interface ISessionModel {
  */
 export abstract class DocumentSession {
   protected _session: ISessionModel;
-  protected baseUrl: string;
-  protected token: string | undefined;
+  protected jupyterAdapter: JupyterLabAdapter;
   protected ydoc: Y.Doc;
   protected provider: CookieWebsocketProvider | null;
   protected connected: boolean;
@@ -30,13 +29,11 @@ export abstract class DocumentSession {
 
   constructor(
     session: ISessionModel,
-    baseUrl: string,
-    token?: string,
+    jupyterAdapter: JupyterLabAdapter,
     ydoc?: Y.Doc,
   ) {
     this._session = session;
-    this.baseUrl = baseUrl;
-    this.token = token;
+    this.jupyterAdapter = jupyterAdapter;
     this.ydoc = ydoc || new Y.Doc();
     this.provider = null;
     this.connected = false;
@@ -93,11 +90,7 @@ export abstract class DocumentSession {
       );
     });
 
-    const wsUrl = URLExt.join(
-      this.baseUrl.replace(/^http/, "ws"),
-      "api/collaboration/room",
-      `${this._session.format}:${this._session.type}:${this._session.fileId}`,
-    );
+    const wsUrl = `${this.jupyterAdapter.baseUrl.replace(/^http/, "ws")}/api/collaboration/room/${this._session.format}:${this._session.type}:${this._session.fileId}`;
 
     // Create custom WebSocket provider
     this.provider = new CookieWebsocketProvider(

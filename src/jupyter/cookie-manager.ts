@@ -51,21 +51,26 @@ export class CookieManager {
   }
 
   /**
-   * Get Cookie header value for requests
-   * @returns Cookie header string
+   * Get session headers including cookies and XSRF token
+   * @returns Headers object with Cookie and X-XSRFToken if available
    */
-  getCookieHeader(): string {
-    const headerValue = this.cookies.getCookieStringSync("http://localhost");
-    return headerValue;
-  }
+  sessionHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {};
 
-  /**
-   * Check if we have any cookies
-   * @returns True if we have cookies
-   */
-  hasCookies(): boolean {
+    // Add cookies if available
+    const cookieHeader = this.cookies.getCookieStringSync("http://localhost");
+    if (cookieHeader) {
+      headers.Cookie = cookieHeader;
+    }
+
+    // Add XSRF token if available
     const cookies = this.cookies.getCookiesSync("http://localhost");
-    return cookies.length > 0;
+    const xsrfCookie = cookies.find((cookie) => cookie.key === "_xsrf");
+    if (xsrfCookie) {
+      headers["X-XSRFToken"] = xsrfCookie.value;
+    }
+
+    return headers;
   }
 
   /**

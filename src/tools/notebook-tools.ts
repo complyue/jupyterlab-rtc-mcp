@@ -117,18 +117,9 @@ export class NotebookTools {
         method: "GET",
       };
 
-      // Add authorization header if token is provided
-      const token = this.jupyterAdapter.token;
-      if (token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
       let response: Response;
       try {
-        response = await ServerConnection.makeRequest(url, init, settings);
+        response = await this.jupyterAdapter.makeJupyterRequest(url, init);
       } catch (error) {
         logger.error(
           `Network error in listNotebooks. URL: ${url}, Method: ${init.method}, Base URL: ${settings.baseUrl}`,
@@ -184,7 +175,7 @@ export class NotebookTools {
 
         let response: Response;
         try {
-          response = await ServerConnection.makeRequest(url, init, settings);
+          response = await this.jupyterAdapter.makeJupyterRequest(url, init);
         } catch (error) {
           logger.error(`Network error in extractNotebooks. URL: ${url}`, error);
           throw new Error(
@@ -438,18 +429,9 @@ export class NotebookTools {
         method: "GET",
       };
 
-      // Add authorization header if token is provided
-      const token = this.jupyterAdapter.token;
-      if (token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
       let response: Response;
       try {
-        response = await ServerConnection.makeRequest(url, init, settings);
+        response = await this.jupyterAdapter.makeJupyterRequest(url, init);
       } catch (error) {
         logger.error(
           `Network error in getNotebookStatus. URL: ${url}, Notebook path: ${path}, Base URL: ${settings.baseUrl}`,
@@ -964,18 +946,9 @@ export class NotebookTools {
         body: JSON.stringify(requestBody),
       };
 
-      // Add authorization header if token is provided
-      const token = this.jupyterAdapter.token;
-      if (token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
       let response: Response;
       try {
-        response = await ServerConnection.makeRequest(url, init, settings);
+        response = await this.jupyterAdapter.makeJupyterRequest(url, init);
       } catch (error) {
         logger.error(
           `Network error in createNotebook. URL: ${url}, Notebook path: ${path}, Base URL: ${settings.baseUrl}`,
@@ -1312,21 +1285,11 @@ export class NotebookTools {
         method: "GET",
       };
 
-      // Add authorization header if token is provided
-      const token = this.jupyterAdapter.token;
-      if (token) {
-        kernelsInit.headers = {
-          ...kernelsInit.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
       let kernelsResponse: Response;
       try {
-        kernelsResponse = await ServerConnection.makeRequest(
+        kernelsResponse = await this.jupyterAdapter.makeJupyterRequest(
           kernelsUrl,
           kernelsInit,
-          settings,
         );
       } catch (error) {
         logger.error(

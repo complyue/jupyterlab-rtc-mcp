@@ -1,6 +1,4 @@
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
-import { ServerConnection } from "@jupyterlab/services";
-import { URLExt } from "@jupyterlab/coreutils";
 import { logger } from "../utils/logger.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { DocumentInfo } from "../jupyter/types.js";
@@ -61,26 +59,16 @@ export class DocumentTools {
    */
   async listDocuments(path?: string): Promise<CallToolResult> {
     try {
-      const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
-      });
+      const baseUrl = this.jupyterAdapter.baseUrl;
+
       const documentPath = path || "";
-      const url = URLExt.join(settings.baseUrl, "/api/contents", documentPath);
+      const url = `${baseUrl}/api/contents/${documentPath}`;
 
       const init: RequestInit = {
         method: "GET",
       };
 
-      // Add authorization header if token is provided
-      const token = this.jupyterAdapter.token;
-      if (token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
-      const response = await ServerConnection.makeRequest(url, init, settings);
+      const response = await this.jupyterAdapter.makeJupyterRequest(url, init);
 
       if (!response.ok) {
         throw new Error(
@@ -89,7 +77,6 @@ export class DocumentTools {
       }
 
       const data = await response.json();
-      const baseUrl = this.jupyterAdapter["baseUrl"];
 
       // Format the response to include only relevant information
       const documents = data.content.map(
@@ -173,10 +160,7 @@ export class DocumentTools {
     content?: string,
   ): Promise<CallToolResult> {
     try {
-      const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
-      });
-      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+      const url = `${this.jupyterAdapter.baseUrl}/api/contents/${path}`;
 
       // Default to 'markdown' type if not specified
       const documentType = type || "markdown";
@@ -220,7 +204,7 @@ export class DocumentTools {
         };
       }
 
-      const response = await ServerConnection.makeRequest(url, init, settings);
+      const response = await this.jupyterAdapter.makeJupyterRequest(url, init);
 
       if (!response.ok) {
         // Try to get more error details from the response body
@@ -291,25 +275,13 @@ export class DocumentTools {
     maxContent: number = 32768,
   ): Promise<CallToolResult> {
     try {
-      const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
-      });
-      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+      const url = `${this.jupyterAdapter.baseUrl}/api/contents/${path}`;
 
       const init: RequestInit = {
         method: "GET",
       };
 
-      // Add authorization header if token is provided
-      const token = this.jupyterAdapter.token;
-      if (token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
-      const response = await ServerConnection.makeRequest(url, init, settings);
+      const response = await this.jupyterAdapter.makeJupyterRequest(url, init);
 
       if (!response.ok) {
         // Try to get more error details from the response body
@@ -327,7 +299,7 @@ export class DocumentTools {
       }
 
       const data = await response.json();
-      const baseUrl = this.jupyterAdapter["baseUrl"];
+      const baseUrl = this.jupyterAdapter.baseUrl;
 
       // Construct the URL based on the item type
       let itemUrl: string;
@@ -426,25 +398,13 @@ export class DocumentTools {
    */
   async deleteDocument(path: string): Promise<CallToolResult> {
     try {
-      const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
-      });
-      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+      const url = `${this.jupyterAdapter.baseUrl}/api/contents/${path}`;
 
       const init: RequestInit = {
         method: "DELETE",
       };
 
-      // Add authorization header if token is provided
-      const token = this.jupyterAdapter.token;
-      if (token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
-      const response = await ServerConnection.makeRequest(url, init, settings);
+      const response = await this.jupyterAdapter.makeJupyterRequest(url, init);
 
       if (!response.ok) {
         // Try to get more error details from the response body
@@ -499,10 +459,7 @@ export class DocumentTools {
    */
   async renameDocument(path: string, newPath: string): Promise<CallToolResult> {
     try {
-      const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
-      });
-      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+      const url = `${this.jupyterAdapter.baseUrl}/api/contents/${path}`;
 
       const requestBody = {
         path: newPath,
@@ -525,7 +482,7 @@ export class DocumentTools {
         };
       }
 
-      const response = await ServerConnection.makeRequest(url, init, settings);
+      const response = await this.jupyterAdapter.makeJupyterRequest(url, init);
 
       if (!response.ok) {
         // Try to get more error details from the response body
@@ -583,10 +540,7 @@ export class DocumentTools {
    */
   async copyDocument(path: string, copyPath: string): Promise<CallToolResult> {
     try {
-      const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
-      });
-      const url = URLExt.join(settings.baseUrl, "/api/contents", copyPath);
+      const url = `${this.jupyterAdapter.baseUrl}/api/contents/${copyPath}`;
 
       const requestBody = {
         copy_from: path,
@@ -600,16 +554,7 @@ export class DocumentTools {
         body: JSON.stringify(requestBody),
       };
 
-      // Add authorization header if token is provided
-      const token = this.jupyterAdapter.token;
-      if (token) {
-        init.headers = {
-          ...init.headers,
-          Authorization: `token ${token}`,
-        };
-      }
-
-      const response = await ServerConnection.makeRequest(url, init, settings);
+      const response = await this.jupyterAdapter.makeJupyterRequest(url, init);
 
       if (!response.ok) {
         // Try to get more error details from the response body
@@ -682,10 +627,7 @@ export class DocumentTools {
     type: string,
   ): Promise<CallToolResult> {
     try {
-      const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
-      });
-      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+      const url = `${this.jupyterAdapter.baseUrl}/api/contents/${path}`;
 
       // Prepare the request body with the new content
       const requestBody: {
@@ -715,7 +657,7 @@ export class DocumentTools {
         };
       }
 
-      const response = await ServerConnection.makeRequest(url, init, settings);
+      const response = await this.jupyterAdapter.makeJupyterRequest(url, init);
 
       if (!response.ok) {
         // Try to get more error details from the response body
