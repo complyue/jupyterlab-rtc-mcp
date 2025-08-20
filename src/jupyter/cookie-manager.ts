@@ -48,6 +48,13 @@ export class CookieManager {
         }
       });
     }
+
+    // Also check for individual Set-Cookie headers (some servers send them separately)
+    headers.forEach((value, name) => {
+      if (name.toLowerCase() === "set-cookie") {
+        this.parseSetCookieHeader(value);
+      }
+    });
   }
 
   /**
