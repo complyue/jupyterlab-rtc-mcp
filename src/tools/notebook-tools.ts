@@ -78,25 +78,28 @@ export class NotebookTools {
   }
 
   /**
-   * List all notebook files under specified directory, recursively
+   * List all notebook files under specified directory, with configurable depth and limit
    *
-   * This method searches for .ipynb files in the specified directory and all subdirectories,
+   * This method searches for .ipynb files in the specified directory and subdirectories up to max_depth,
    * skipping common system directories like .ipynb_checkpoints, __pycache__, etc.
    * For each notebook found, it constructs a URL and checks for active RTC sessions.
    *
    * @param path Directory path to search for notebooks (default: root)
+   * @param maxDepth Maximum depth to search recursively (0 for current directory only, default: 3)
+   * @param maxNbs Maximum number of notebooks to return (default: 10)
    * @returns MCP response with notebook list including RTC session information
    *
    * @example
    * ```typescript
-   * const result = await notebookTools.listNotebooks('projects');
+   * const result = await notebookTools.listNotebooks('projects', 2, 5);
    * const notebooks = JSON.parse(result.content[0].text).notebooks;
    * console.log(`Found ${notebooks.length} notebooks`);
    * ```
    */
   async listNotebooks(
     path?: string,
-    recursive?: boolean,
+    maxDepth?: number,
+    maxNbs?: number,
   ): Promise<CallToolResult> {
     try {
       const { ServerConnection } = await import("@jupyterlab/services");
@@ -162,8 +165,15 @@ export class NotebookTools {
       }
       const notebooks: NotebookInfo[] = [];
 
-      // Local closure function to extract notebooks from a directory path
-      const extractNotebooks = async (targetDir: string): Promise<void> => {
+      // Set default values for maxDepth and maxNbs
+      const depthLimit = maxDepth ?? 3;
+      const notebooksLimit = maxNbs ?? 10;
+
+      // Local closure function to extract notebooks from a directory path, return whether there're potentially more notebooks that are not included in the returned list
+      const extractNotebooks = async (
+        targetDir: string,
+        currentDepth: number = 0,
+      ): Promise<boolean> => {
         // Ensure proper URL construction
         const contentsPath = targetDir || "/";
         const url = URLExt.join(
@@ -220,6 +230,10 @@ export class NotebookTools {
                 // Check for active RTC session for this notebook
                 const rtcSession = this._getNotebookRTCSession(item.path);
 
+                // there's at least one more nb not included
+                if (notebooks.length >= notebooksLimit) {
+                  return true;
+                }
                 notebooks.push({
                   path: item.path,
                   name: item.name,
@@ -230,12 +244,15 @@ export class NotebookTools {
                   url: notebookUrl,
                   rtc_session: rtcSession,
                 });
-              } else if (item.type === "directory" && recursive) {
+              } else if (
+                item.type === "directory" &&
+                currentDepth < depthLimit
+              ) {
                 // Skip directories that should be ignored
                 if (!this._shouldSkipDirectory(item.name)) {
                   // Recursively process subdirectory, but tolerate errors
                   try {
-                    await extractNotebooks(item.path);
+                    await extractNotebooks(item.path, currentDepth + 1);
                   } catch (error) {
                     // Log the error but continue processing other directories
                     logger.warn(
@@ -255,6 +272,10 @@ export class NotebookTools {
           // Check for active RTC session for this notebook
           const rtcSession = this._getNotebookRTCSession(contents.path);
 
+          // there's at least one more nb not included
+          if (notebooks.length >= notebooksLimit) {
+            return true;
+          }
           notebooks.push({
             path: contents.path,
             name: contents.name,
@@ -266,16 +287,25 @@ export class NotebookTools {
             rtc_session: rtcSession,
           });
         }
+
+        return false;
       };
 
       // Extract notebooks using the closure function
-      await extractNotebooks(notebookPath);
+      const moreNbs = await extractNotebooks(notebookPath, 0);
 
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ notebooks }, null, 2),
+            text: JSON.stringify(
+              {
+                more_exist: moreNbs,
+                notebooks: notebooks,
+              },
+              null,
+              2,
+            ),
           },
         ],
       };

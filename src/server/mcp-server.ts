@@ -112,21 +112,25 @@ export class JupyterLabMCPServer {
     // Tool to list notebooks
     this.server.tool(
       "list_nbs",
-      "List all notebook files under specified directory (recursively if requested), with RTC session and collaborator information",
+      "List all notebook files under specified directory with RTC session and collaborator information",
       {
         path: z
           .string()
           .optional()
           .describe("Directory path to search for notebooks (default: root)"),
-        recursive: z
-          .boolean()
-          .default(false)
+        max_depth: z
+          .number()
+          .default(3)
           .describe(
-            "Whether to search recursively in subdirectories (default: false)",
+            "Maximum depth to search recursively (0 for current directory only, default: 3)",
           ),
+        max_nbs: z
+          .number()
+          .default(10)
+          .describe("Maximum number of notebooks to return (default: 10)"),
       },
-      async ({ path, recursive }) => {
-        return await this.notebookTools.listNotebooks(path, recursive);
+      async ({ path, max_depth, max_nbs }) => {
+        return await this.notebookTools.listNotebooks(path, max_depth, max_nbs);
       },
     );
 
