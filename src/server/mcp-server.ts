@@ -112,15 +112,21 @@ export class JupyterLabMCPServer {
     // Tool to list notebooks
     this.server.tool(
       "list_nbs",
-      "List all notebook files under specified directory, recursively, with RTC session and collaborator information",
+      "List all notebook files under specified directory (recursively if requested), with RTC session and collaborator information",
       {
         path: z
           .string()
           .optional()
           .describe("Directory path to search for notebooks (default: root)"),
+        recursive: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Whether to search recursively in subdirectories (default: false)",
+          ),
       },
-      async ({ path }) => {
-        return await this.notebookTools.listNotebooks(path);
+      async ({ path, recursive }) => {
+        return await this.notebookTools.listNotebooks(path, recursive);
       },
     );
 

@@ -101,10 +101,11 @@ A JSON object with:
 **Note:** The path parameter must end with `.ipynb` to ensure it's a valid notebook file. The tool creates a new empty notebook with no cells.
 
 #### list_nbs
-Lists all notebook files under a specified directory, recursively, providing comprehensive information about each notebook including metadata and access URLs.
+Lists all notebook files under a specified directory, with optional recursive listing, providing comprehensive information about each notebook including metadata and access URLs.
 
 **Parameters:**
 - `path` (optional): Directory path to search for notebooks (default: root directory)
+- `recursive` (optional, default: false): Whether to search recursively in subdirectories
 
 **Returns:**
 A JSON array of notebook objects with properties:
@@ -134,6 +135,12 @@ A JSON array of notebook objects with properties:
 ```
 
 **Note:** The URL field provides direct links to notebooks in JupyterLab using the `/notebooks/` path pattern.
+
+**Implementation Details:**
+- The JupyterLab Contents API does not natively support recursive listing
+- When `recursive=true`, the implementation makes separate API calls to the `/api/contents/{path}` endpoint for each subdirectory
+- Common system directories (`.ipynb_checkpoints`, `__pycache__`, `.git`, `.vscode`, `.idea`, `node_modules`) are automatically skipped during recursive traversal
+- This manual recursion approach ensures that all notebooks in nested directories are discovered and returned
 
 #### get_nb_stat
 Retrieves status information about a notebook, including cell count and kernel state, providing a snapshot of the notebook's current condition.

@@ -94,7 +94,10 @@ export class NotebookTools {
    * console.log(`Found ${notebooks.length} notebooks`);
    * ```
    */
-  async listNotebooks(path?: string): Promise<CallToolResult> {
+  async listNotebooks(
+    path?: string,
+    recursive?: boolean,
+  ): Promise<CallToolResult> {
     try {
       const { ServerConnection } = await import("@jupyterlab/services");
       const { URLExt } = await import("@jupyterlab/coreutils");
@@ -155,9 +158,116 @@ export class NotebookTools {
       if (!parsedData) {
         throw new Error("Failed to parse response data");
       }
-      const notebooks = this._extractNotebooksWithRTC(
-        parsedData as JupyterContent,
-      );
+      const notebooks: NotebookInfo[] = [];
+
+      // Local closure function to extract notebooks from a directory path
+      const extractNotebooks = async (targetDir: string): Promise<void> => {
+        // Ensure proper URL construction
+        const contentsPath = targetDir || "/";
+        const url = URLExt.join(
+          settings.baseUrl,
+          "/api/contents",
+          contentsPath,
+        );
+
+        let response: Response;
+        try {
+          response = await ServerConnection.makeRequest(url, init, settings);
+        } catch (error) {
+          logger.error(
+            `Network error in extractNotebooks: ${error instanceof Error ? error.message : String(error)}. URL: ${url}`,
+          );
+          throw new Error(
+            `Network error when accessing ${url}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+
+        let data: string = await response.text();
+        let parsedData: JsonResponse | null = null;
+
+        if (data.length > 0) {
+          try {
+            parsedData = JSON.parse(data);
+          } catch (error) {
+            logger.error(
+              `Not a JSON response body in extractNotebooks: ${error instanceof Error ? error.message : String(error)}. Response status: ${response.status}`,
+            );
+          }
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            `Server returned ${response.status}: ${parsedData?.message || data}`,
+          );
+        }
+
+        if (!parsedData) {
+          throw new Error("Failed to parse response data");
+        }
+
+        const contents = parsedData as JupyterContent;
+
+        if (contents.type === "directory") {
+          // Process notebooks in current directory
+          if (contents.content) {
+            for (const item of contents.content) {
+              if (item.type === "notebook") {
+                // Construct the full URL for the notebook
+                const baseUrl = this.jupyterAdapter["baseUrl"];
+                const notebookUrl = `${baseUrl}/notebooks/${item.path}`;
+
+                // Check for active RTC session for this notebook
+                const rtcSession = this._getNotebookRTCSession(item.path);
+
+                notebooks.push({
+                  path: item.path,
+                  name: item.name,
+                  last_modified: item.last_modified,
+                  created: item.created,
+                  size: item.size,
+                  writable: item.writable,
+                  url: notebookUrl,
+                  rtc_session: rtcSession,
+                });
+              } else if (item.type === "directory" && recursive) {
+                // Skip directories that should be ignored
+                if (!this._shouldSkipDirectory(item.name)) {
+                  // Recursively process subdirectory, but tolerate errors
+                  try {
+                    await extractNotebooks(item.path);
+                  } catch (error) {
+                    // Log the error but continue processing other directories
+                    logger.warn(
+                      `Failed to access subdirectory ${item.path}: ${error instanceof Error ? error.message : String(error)}`,
+                    );
+                  }
+                }
+              }
+            }
+          }
+        } else if (contents.type === "notebook") {
+          // Single notebook file
+          const baseUrl = this.jupyterAdapter["baseUrl"];
+          const notebookUrl = `${baseUrl}/notebooks/${contents.path}`;
+
+          // Check for active RTC session for this notebook
+          const rtcSession = this._getNotebookRTCSession(contents.path);
+
+          notebooks.push({
+            path: contents.path,
+            name: contents.name,
+            last_modified: contents.last_modified,
+            created: contents.created,
+            size: contents.size,
+            writable: contents.writable,
+            url: notebookUrl,
+            rtc_session: rtcSession,
+          });
+        }
+      };
+
+      // Extract notebooks using the closure function
+      await extractNotebooks(notebookPath);
 
       return {
         content: [
@@ -193,67 +303,6 @@ export class NotebookTools {
       "node_modules",
     ];
     return skippedDirs.includes(directoryName);
-  }
-
-  /**
-   * Extract notebook files from JupyterLab contents API response with RTC session information
-   * @param contents Contents API response
-   * @returns Array of notebook objects with RTC session information
-   */
-  private _extractNotebooksWithRTC(contents: JupyterContent): NotebookInfo[] {
-    const notebooks: NotebookInfo[] = [];
-
-    if (contents.type === "directory") {
-      // Recursively process directory contents
-      if (contents.content) {
-        for (const item of contents.content) {
-          if (item.type === "directory") {
-            // Skip directories that should be ignored
-            if (!this._shouldSkipDirectory(item.name)) {
-              notebooks.push(...this._extractNotebooksWithRTC(item));
-            }
-          } else if (item.type === "notebook") {
-            // Construct the full URL for the notebook
-            const baseUrl = this.jupyterAdapter["baseUrl"];
-            const notebookUrl = `${baseUrl}/notebooks/${item.path}`;
-
-            // Check for active RTC session for this notebook
-            const rtcSession = this._getNotebookRTCSession(item.path);
-
-            notebooks.push({
-              path: item.path,
-              name: item.name,
-              last_modified: item.last_modified,
-              created: item.created,
-              size: item.size,
-              writable: item.writable,
-              url: notebookUrl,
-              rtc_session: rtcSession,
-            });
-          }
-        }
-      }
-    } else if (contents.type === "notebook") {
-      // Single notebook file
-      const baseUrl = this.jupyterAdapter["baseUrl"];
-      const notebookUrl = `${baseUrl}/notebooks/${contents.path}`;
-
-      // Check for active RTC session for this notebook
-      const rtcSession = this._getNotebookRTCSession(contents.path);
-
-      notebooks.push({
-        path: contents.path,
-        name: contents.name,
-        last_modified: contents.last_modified,
-        created: contents.created,
-        size: contents.size,
-        writable: contents.writable,
-        url: notebookUrl,
-        rtc_session: rtcSession,
-      });
-    }
-
-    return notebooks;
   }
 
   /**
