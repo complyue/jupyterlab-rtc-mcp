@@ -135,7 +135,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to list documents:", error);
+      logger.error(
+        `Failed to list documents from ${path || "root"}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to list documents: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -246,7 +248,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to create document:", error);
+      logger.error(
+        `Failed to create document at ${path}: ${error instanceof Error ? error.message : String(error)}. Document type: ${type || "markdown"}`,
+      );
       throw new Error(
         `Failed to create document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -393,7 +397,9 @@ export class DocumentTools {
         content: resultContent,
       };
     } catch (error) {
-      logger.error("Failed to get document info:", error);
+      logger.error(
+        `Failed to get document info for ${path}: ${error instanceof Error ? error.message : String(error)}. Include content: ${includeContent}, Max content: ${maxContent}`,
+      );
       throw new Error(
         `Failed to get document info: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -464,7 +470,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to delete document:", error);
+      logger.error(
+        `Failed to delete document at ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to delete document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -545,7 +553,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to rename document:", error);
+      logger.error(
+        `Failed to rename document from ${path} to ${newPath}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to rename document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -626,7 +636,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to copy document:", error);
+      logger.error(
+        `Failed to copy document from ${path} to ${copyPath}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to copy document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -729,7 +741,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to modify document:", error);
+      logger.error(
+        `Failed to modify document at ${path}: ${error instanceof Error ? error.message : String(error)}. Document type: ${type}`,
+      );
       throw new Error(
         `Failed to modify document: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -794,7 +808,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to insert document text:", error);
+      logger.error(
+        `Failed to insert document text at position ${position} in document ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to insert document text: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -860,7 +876,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to delete document text:", error);
+      logger.error(
+        `Failed to delete ${length} characters from position ${position} in document ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to delete document text: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -929,7 +947,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to replace document text:", error);
+      logger.error(
+        `Failed to replace ${length} characters at position ${position} in document ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to replace document text: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1014,7 +1034,9 @@ export class DocumentTools {
         ],
       };
     } catch (error) {
-      logger.error("Failed to get document content:", error);
+      logger.error(
+        `Failed to get document content for ${path}: ${error instanceof Error ? error.message : String(error)}. Max content: ${maxContent}`,
+      );
       throw new Error(
         `Failed to get document content: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1041,7 +1063,9 @@ export class DocumentTools {
     try {
       return await this.jupyterAdapter.endDocumentSession({ path });
     } catch (error) {
-      logger.error("Failed to end document session:", error);
+      logger.error(
+        `Failed to end document session for ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to end document session: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -1074,7 +1098,9 @@ export class DocumentTools {
     try {
       return await this.jupyterAdapter.queryDocumentSession({ path });
     } catch (error) {
-      logger.error("Failed to query document session:", error);
+      logger.error(
+        `Failed to query document session for ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       throw new Error(
         `Failed to query document session: ${error instanceof Error ? error.message : String(error)}`,
       );
