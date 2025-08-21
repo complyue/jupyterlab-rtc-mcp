@@ -813,7 +813,8 @@ export async function executeJupyterCell(
   logger.debug(`Executing cell with source: ${cell.source}`);
 
   // Clear any existing outputs
-  cell.setOutputs([]);
+  cell.clearOutputs();
+  cell.execution_count = null;
   // set it's running state
   cell.executionState = "running";
 
@@ -834,44 +835,81 @@ export async function executeJupyterCell(
         case "execute_result": {
           const executeResult =
             msg.content as KernelMessage.IExecuteResultMsg["content"];
-          outputs.push({
-            output_type: "execute_result",
+          const newOutput = {
+            output_type: "execute_result" as const,
             execution_count: executeResult.execution_count,
             data: executeResult.data,
             metadata: executeResult.metadata || {},
-          });
+          };
+          outputs.push(newOutput);
+          // Add the new output at the end of the outputs array
+          cell.updateOutputs(outputs.length - 1, outputs.length, [newOutput]);
           break;
         }
 
         case "stream": {
           const stream = msg.content as KernelMessage.IStreamMsg["content"];
-          outputs.push({
-            output_type: "stream",
+          const streamOutput = {
+            output_type: "stream" as const,
             name: stream.name,
             text: stream.text,
-          });
+          };
+
+          // Check if there's already a stream output with the same name
+          let existingStreamIndex = -1;
+          for (let i = outputs.length - 1; i >= 0; i--) {
+            if (
+              outputs[i].output_type === "stream" &&
+              outputs[i].name === stream.name
+            ) {
+              existingStreamIndex = i;
+              break;
+            }
+          }
+
+          if (existingStreamIndex >= 0) {
+            // Append to existing stream output
+            cell.appendStreamOutput(existingStreamIndex, stream.text);
+            // Update our local outputs array to match
+            outputs[existingStreamIndex] = {
+              ...outputs[existingStreamIndex],
+              text: (outputs[existingStreamIndex].text || "") + stream.text,
+            };
+          } else {
+            // Create new stream output
+            outputs.push(streamOutput);
+            cell.updateOutputs(outputs.length - 1, outputs.length, [
+              streamOutput,
+            ]);
+          }
           break;
         }
 
         case "display_data": {
           const displayData =
             msg.content as KernelMessage.IDisplayDataMsg["content"];
-          outputs.push({
-            output_type: "display_data",
+          const newOutput = {
+            output_type: "display_data" as const,
             data: displayData.data,
             metadata: displayData.metadata || {},
-          });
+          };
+          outputs.push(newOutput);
+          // Add the new output at the end of the outputs array
+          cell.updateOutputs(outputs.length - 1, outputs.length, [newOutput]);
           break;
         }
 
         case "error": {
           const error = msg.content as KernelMessage.IErrorMsg["content"];
-          outputs.push({
-            output_type: "error",
+          const newOutput = {
+            output_type: "error" as const,
             ename: error.ename,
             evalue: error.evalue,
             traceback: error.traceback,
-          });
+          };
+          outputs.push(newOutput);
+          // Add the new output at the end of the outputs array
+          cell.updateOutputs(outputs.length - 1, outputs.length, [newOutput]);
           break;
         }
 
@@ -890,9 +928,6 @@ export async function executeJupyterCell(
         default:
           logger.debug(`Unhandled IOPub message type: ${msg.header.msg_type}`);
       }
-
-      // Update the cell outputs with the latest outputs
-      cell.setOutputs([...outputs]);
     };
 
     // Wait for the execution to complete
@@ -919,7 +954,9 @@ export async function executeJupyterCell(
       traceback: error instanceof Error ? [error.stack || ""] : [String(error)],
     };
 
-    cell.setOutputs([errorOutput]);
+    // Clear any existing outputs and add the error output
+    const currentOutputs = cell.getOutputs();
+    cell.updateOutputs(0, currentOutputs.length, [errorOutput]);
 
     // Process error output with truncation
     const {

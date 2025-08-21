@@ -852,6 +852,11 @@ export class NotebookTools {
       if (exec !== false) {
         const kernelConn = await nbSession.ensureKernelConnection();
         for (const cell of cells2exec) {
+          if (!cell.getSource().trim()) {
+            cell.clearOutputs();
+            cell.execution_count = null;
+            continue; // skip empty cell
+          }
           const result = await executeJupyterCell(
             cell,
             kernelConn,
@@ -1060,6 +1065,11 @@ export class NotebookTools {
       if (exec !== false) {
         const kernelConn = await nbSession.ensureKernelConnection();
         for (const cell of cells2exec) {
+          if (!cell.getSource().trim()) {
+            cell.clearOutputs();
+            cell.execution_count = null;
+            continue; // skip empty cell
+          }
           const result = await executeJupyterCell(
             cell,
             kernelConn,
@@ -1517,6 +1527,11 @@ export class NotebookTools {
       // Execute all cells and collect results
       const executionResults: CellExecutionResult[] = [];
       for (const cell of cellsToExecute) {
+        if (!cell.getSource().trim()) {
+          cell.clearOutputs();
+          cell.execution_count = null;
+          continue; // skip empty cell
+        }
         const result = await executeJupyterCell(
           cell,
           kernelConn,

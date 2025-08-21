@@ -251,7 +251,9 @@ export class NotebookSession extends DocumentSession {
       await this.ensureSynchronized();
       for (const cell of this.yNotebook.cells) {
         if (cell.cell_type === "code") {
-          (cell as YCodeCell).setOutputs([]);
+          const codeCell = cell as YCodeCell;
+          codeCell.clearOutputs();
+          codeCell.execution_count = null;
         }
       }
     }
@@ -264,6 +266,9 @@ export class NotebookSession extends DocumentSession {
       for (const cell of this.getYNotebook().cells) {
         if (cell.cell_type === "code") {
           const codeCell = cell as YCodeCell;
+          if (!codeCell.getSource().trim()) {
+            continue; // skip empty cell
+          }
           await executeJupyterCell(codeCell, newKernelConn);
         }
       }
