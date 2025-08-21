@@ -1006,7 +1006,7 @@ function processCellOutputsWithTruncation(
           totalOriginalSize += value.length;
           if (value.length > maxOutputSize) {
             (processedOutput.data as Record<string, unknown>)[mimeType] =
-              value.substring(0, maxOutputSize) + "... [truncated]";
+              value.substring(0, maxOutputSize - 14) + "... [truncated]";
             anyTruncated = true;
           } else {
             (processedOutput.data as Record<string, unknown>)[mimeType] = value;
@@ -1034,7 +1034,7 @@ function processCellOutputsWithTruncation(
       ) {
         totalOriginalSize += processedOutput.evalue.length;
         processedOutput.evalue =
-          processedOutput.evalue.substring(0, maxOutputSize) +
+          processedOutput.evalue.substring(0, maxOutputSize - 14) +
           "... [truncated]";
         anyTruncated = true;
       }
@@ -1049,7 +1049,7 @@ function processCellOutputsWithTruncation(
           if (typeof line === "string" && line.length > maxOutputSize) {
             totalOriginalSize += line.length;
             processedTraceback.push(
-              line.substring(0, maxOutputSize) + "... [truncated]",
+              line.substring(0, maxOutputSize - 14) + "... [truncated]",
             );
             anyTruncated = true;
           } else if (typeof line === "string") {
@@ -1076,7 +1076,8 @@ function processCellOutputsWithTruncation(
       ) {
         totalOriginalSize += processedOutput.text.length;
         processedOutput.text =
-          processedOutput.text.substring(0, maxOutputSize) + "... [truncated]";
+          processedOutput.text.substring(0, maxOutputSize - 14) +
+          "... [truncated]";
         anyTruncated = true;
       }
 

@@ -508,7 +508,7 @@ export class NotebookTools {
       return { text, truncated: false };
     }
     return {
-      text: text.substring(0, maxLength) + "... [truncated]",
+      text: text.substring(0, maxLength - 14) + "... [truncated]",
       truncated: true,
     };
   }
