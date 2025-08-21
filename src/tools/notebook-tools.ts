@@ -1043,19 +1043,17 @@ export class NotebookTools {
       const ynb = nbSession.getYNotebook();
       const cells2exec: YCodeCell[] = [];
 
-      ynb.transact(() => {
-        // Use bulk insertion API to insert cells
-        ynb.insertCells(position, cellsToInsert);
+      // Use bulk insertion API to insert cells
+      ynb.insertCells(position, cellsToInsert);
 
-        // Get the actual inserted cells from the ynb.cells array
-        for (let i = 0; i < cellsToInsert.length; i++) {
-          const cellIndex = position + i;
-          const cell = ynb.cells[cellIndex];
-          if (cell && cell.cell_type === "code") {
-            cells2exec.push(cell as YCodeCell);
-          }
+      // Get the actual inserted cells from the ynb.cells array
+      for (let i = 0; i < cellsToInsert.length; i++) {
+        const cellIndex = position + i;
+        const cell = ynb.cells[cellIndex];
+        if (cell && cell.cell_type === "code") {
+          cells2exec.push(cell as YCodeCell);
         }
-      });
+      }
 
       // Execute cells if requested
       let executionResults: CellExecutionResult[] = [];
