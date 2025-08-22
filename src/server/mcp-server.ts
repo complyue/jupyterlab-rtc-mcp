@@ -47,8 +47,19 @@ export class JupyterLabMCPServer {
     // Notebook Operation Tools
     this.registerNotebookTools();
 
-    // Document Management Tools
-    this.registerDocumentTools();
+    /* Consider doc tools experimental, rtc capability upon docs seems flawed
+     *
+     * https://github.com/jupyterlab/jupyter-collaboration/blob/main/packages/docprovider-extension/src/filebrowser.ts#L47-L51
+        'The file %1 has been opened with two different views. ' +
+        'This is not supported. Please close this view; otherwise, ' +
+        'some of your edits may not be saved properly.';
+     *
+     * only provide doc tools when the user opt-in for them
+     */
+    if (process.env.JUPYTERLAB_DOC_TOOLS) {
+      // Document Management Tools
+      this.registerDocumentTools();
+    }
   }
 
   /**

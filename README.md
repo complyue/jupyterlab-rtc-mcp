@@ -10,7 +10,7 @@ This MCP server supports both stdio and HTTP transport for communication with AI
 - Read and modify notebook content
 - Assign/change/restart notebook kernels
 - Execute code cells and see the results
-- Read and modify documents
+- Read and modify documents (experimental, configuration opt in)
 
 Thanks to the [Jupyter Real-Time Collaboration](https://jupyterlab-realtime-collaboration.readthedocs.io) extension, human users can monitor AI agent operations in real time as they work.
 
@@ -21,7 +21,7 @@ Thanks to the [Jupyter Real-Time Collaboration](https://jupyterlab-realtime-coll
 - **Multiple Document Types**: Support for notebooks, markdown/text files, and other JupyterLab document types
 - **Kernel Control**: Manage the kernel associated with notebooks
 - **Cell Operations**: Read, write, and execute notebook cells
-- **Document Management**: Create, list, and manage documents
+- **Document Management**: Create, list, and manage documents (experimental, configuration opt in)
 - **Automatic Session Timeout**: Sessions are automatically terminated after a period of inactivity to free resources
 
 ## Prerequisites
@@ -93,12 +93,16 @@ The MCP server provides the following categories of tools:
 
 ### Document Editing Tools
 
+> **Note**: Document tools are currently experimental and may have limitations with real-time collaboration. To enable these tools, set the `JUPYTERLAB_DOC_TOOLS` environment variable to `1`
+
 - **get_document_content**: Retrieves document content using real-time collaboration with truncation support
 - **insert_document_text**: Inserts text at a specific position in a document using real-time collaboration
 - **delete_document_text**: Deletes text from a specific position in a document using real-time collaboration
 - **replace_document_text**: Replaces text within a specific range in a document using real-time collaboration
 
 ### Document Management Tools
+
+> **Note**: Document tools are currently experimental and may have limitations with real-time collaboration. To enable these tools, set the `JUPYTERLAB_DOC_TOOLS` environment variable to `1`
 
 - **list_documents**: Lists available documents in JupyterLab from a specified path, including URLs for direct access
 - **create_document**: Creates a new document in JupyterLab
@@ -215,6 +219,9 @@ export JUPYTERLAB_TOKEN=your-token-here
 
 # Log level
 export LOG_LEVEL=info
+
+# Enable experimental document tools (optional)
+export JUPYTERLAB_DOC_TOOLS=1
 ```
 
 ## Development
