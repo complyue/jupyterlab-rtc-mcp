@@ -5,7 +5,7 @@ esbuild.build({
   entryPoints: ['src/index.ts'],
   bundle: true,
   platform: 'node',
-  outfile: 'bundle/jupyterlab-rtc-mcp.js',
+  outfile: 'bundle/jupyterlab-rtc-mcp.mjs',
   format: 'esm',
   target: 'ES2022',
   sourcemap: false,
