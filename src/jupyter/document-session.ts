@@ -150,7 +150,7 @@ export abstract class DocumentSession {
   /**
    * Create and setup the WebSocket provider
    */
-  private _createProvider(maxWsPayload: number): WebsocketProvider {
+  private _createProvider(maxPayload: number): WebsocketProvider {
     const jupyterAdapter = this.jupyterAdapter;
 
     const wsUrl = `${jupyterAdapter.baseUrl.replace(/^http/, "ws")}/api/collaboration/room/${this._session.format}:${this._session.type}:${this._session.fileId}`;
@@ -159,7 +159,7 @@ export abstract class DocumentSession {
       constructor(url: string | URL, options?: WebSocket.ClientOptions) {
         // Set max payload size to handle large notebooks
         const wsOptions = {
-          maxWsPayload,
+          maxPayload,
           ...options,
           headers: {
             ...jupyterAdapter.sessionHeaders(),
@@ -167,7 +167,7 @@ export abstract class DocumentSession {
           },
         };
         logger.debug(
-          `Creating WebSocket connection with maxWsPayload: ${maxWsPayload} bytes (${(maxWsPayload / 1024 / 1024).toFixed(1)} MB)`,
+          `Creating WebSocket connection with maxPayload: ${maxPayload} bytes (${(maxPayload / 1024 / 1024).toFixed(1)} MB)`,
         );
         super(url, wsOptions);
       }
