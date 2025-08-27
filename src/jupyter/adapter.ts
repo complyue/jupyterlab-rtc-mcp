@@ -9,16 +9,101 @@ import {
 import { IKernelConnection } from "@jupyterlab/services/lib/kernel/kernel.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 
-import { logger } from "../utils/logger.js";
-import { cookieManager } from "./cookie-manager.js";
+import { Cookie, CookieJar } from "tough-cookie";
+
 import { NotebookSession } from "./notebook-session.js";
 import { TextDocumentSession } from "./textdoc-session.js";
+
+import { logger } from "../utils/logger.js";
 
 export interface ISessionModel {
   format: string;
   type: string;
   fileId: string;
   sessionId: string;
+}
+
+class CookieManager {
+  private cookies: CookieJar;
+  private baseUrl: string;
+
+  constructor(baseUrl: string = "http://localhost:8888") {
+    this.cookies = new CookieJar();
+    this.baseUrl = baseUrl;
+  }
+
+  /**
+   * Parse cookies from a Set-Cookie header
+   * @param setCookieHeader Set-Cookie header value
+   */
+  parseSetCookieHeader(setCookieHeader: string): void {
+    try {
+      const cookie = Cookie.parse(setCookieHeader);
+      if (cookie) {
+        this.cookies.setCookieSync(cookie, this.baseUrl);
+      } else {
+        logger.warn(`Failed to parse cookie from header: ${setCookieHeader}`);
+      }
+    } catch (error) {
+      logger.error(`Error parsing cookie header: ${setCookieHeader}`, error);
+    }
+  }
+
+  /**
+   * Parse cookies from multiple Set-Cookie headers
+   * @param headers Response headers containing Set-Cookie
+   */
+  parseResponseHeaders(headers: Headers): void {
+    const setCookieHeaders = headers.get("set-cookie");
+    if (setCookieHeaders) {
+      // Handle multiple Set-Cookie headers properly
+      const cookieHeaders = setCookieHeaders.split("\n");
+
+      cookieHeaders.forEach((header) => {
+        const trimmedHeader = header.trim();
+        if (trimmedHeader) {
+          this.parseSetCookieHeader(trimmedHeader);
+        }
+      });
+    }
+
+    // Also check for individual Set-Cookie headers (some servers send them separately)
+    headers.forEach((value, name) => {
+      if (name.toLowerCase() === "set-cookie") {
+        this.parseSetCookieHeader(value);
+      }
+    });
+  }
+
+  /**
+   * Get session headers including cookies and XSRF token
+   * @returns Headers object with Cookie and X-XSRFToken if available
+   */
+  sessionHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {};
+
+    // Add cookies if available
+    const cookieHeader = this.cookies.getCookieStringSync(this.baseUrl);
+    if (cookieHeader) {
+      headers.Cookie = cookieHeader;
+    }
+
+    // Add XSRF token if available
+    const cookies = this.cookies.getCookiesSync(this.baseUrl);
+    const xsrfCookie = cookies.find((cookie) => cookie.key === "_xsrf");
+    if (xsrfCookie) {
+      headers["X-XSRFToken"] = xsrfCookie.value;
+    }
+
+    return headers;
+  }
+
+  /**
+   * Clear all cookies
+   */
+  clear(): void {
+    this.cookies.removeAllCookiesSync();
+  }
 }
 
 /**
@@ -39,6 +124,7 @@ export class JupyterLabAdapter {
 
   private documentSessions: Map<string, TextDocumentSession>;
   private notebookSessions: Map<string, NotebookSession>;
+  private _cookieManager: CookieManager;
 
   constructor(sessionTimeout?: number, baseUrl?: string, token?: string) {
     this.sessionTimeout = sessionTimeout || 5 * 60 * 1000; // Default to 5 minutes
@@ -47,6 +133,9 @@ export class JupyterLabAdapter {
     this._baseUrl =
       baseUrl || process.env.JUPYTERLAB_URL || "http://localhost:8888";
     this._token = token || process.env.JUPYTERLAB_TOKEN;
+
+    // Initialize cookie manager with the proper base URL
+    this._cookieManager = new CookieManager(this._baseUrl);
 
     // Create server settings for the KernelManager
     const serverSettings = ServerConnection.makeSettings({
@@ -69,6 +158,10 @@ export class JupyterLabAdapter {
   }
   get kernelManager() {
     return this._kernelManager;
+  }
+
+  sessionHeaders() {
+    return this._cookieManager.sessionHeaders();
   }
 
   /**
@@ -621,7 +714,7 @@ export class JupyterLabAdapter {
     }
 
     // Add session headers (cookies and XSRF token)
-    const sessionHeaders = cookieManager.sessionHeaders();
+    const sessionHeaders = this._cookieManager.sessionHeaders();
     init.headers = {
       ...init.headers,
       ...sessionHeaders,
@@ -631,7 +724,7 @@ export class JupyterLabAdapter {
     const response = await ServerConnection.makeRequest(url, init, settings);
 
     // Store cookies from response
-    cookieManager.parseResponseHeaders(response.headers);
+    this._cookieManager.parseResponseHeaders(response.headers);
 
     return response;
   }
@@ -647,7 +740,7 @@ export class JupyterLabAdapter {
     type: string,
   ): Promise<ISessionModel> {
     const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
-    const url = URLExt.join(
+    let url = URLExt.join(
       settings.baseUrl,
       "api/collaboration/session",
       encodeURIComponent(path),

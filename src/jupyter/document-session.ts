@@ -1,7 +1,10 @@
 import { PromiseDelegate } from "@lumino/coreutils";
+import { WebsocketProvider } from "y-websocket";
+import WebSocket from "ws";
 import * as Y from "yjs";
-import { CookieWebsocketProvider } from "./websocket-provider.js";
+
 import { logger } from "../utils/logger.js";
+
 import { JupyterLabAdapter } from "./adapter.js";
 
 export interface ISessionModel {
@@ -22,7 +25,7 @@ export abstract class DocumentSession {
   protected _session: ISessionModel;
   protected jupyterAdapter: JupyterLabAdapter;
   protected ydoc: Y.Doc;
-  protected provider: CookieWebsocketProvider | null;
+  protected provider: WebsocketProvider | null;
   protected connected: boolean;
   protected synced: boolean;
   protected _connectionPromise: PromiseDelegate<void> | null;
@@ -90,7 +93,45 @@ export abstract class DocumentSession {
       );
     });
 
-    const wsUrl = `${this.jupyterAdapter.baseUrl.replace(/^http/, "ws")}/api/collaboration/room/${this._session.format}:${this._session.type}:${this._session.fileId}`;
+    const jupyterAdapter = this.jupyterAdapter;
+
+    const wsUrl = `${jupyterAdapter.baseUrl.replace(/^http/, "ws")}/api/collaboration/room/${this._session.format}:${this._session.type}:${this._session.fileId}`;
+
+    class CookieWS extends WebSocket {
+      constructor(url: string | URL, options?: WebSocket.ClientOptions) {
+        super(url, {
+          ...options,
+          headers: {
+            ...jupyterAdapter.sessionHeaders(),
+          },
+        });
+      }
+    }
+
+    /**
+     * Custom WebsocketProvider that can inject cookies into the WebSocket connection
+     */
+    class CookieWebsocketProvider extends WebsocketProvider {
+      constructor(
+        serverUrl: string,
+        roomname: string,
+        doc: unknown,
+        opts: {
+          connect?: boolean;
+          awareness?: unknown;
+          params?: Record<string, string>;
+          protocols?: string[];
+          resyncInterval?: number;
+          maxBackoffTime?: number;
+          disableBc?: boolean;
+        } = {},
+      ) {
+        super(serverUrl, roomname, doc as any, {
+          ...(opts as any),
+          WebSocketPolyfill: CookieWS as any,
+        });
+      }
+    }
 
     // Create custom WebSocket provider
     this.provider = new CookieWebsocketProvider(
