@@ -262,8 +262,8 @@ export class JupyterLabAdapter {
       const session = await this.requestDocSession(path, "file");
 
       // Check if we already have a session for this document
-      if (this.documentSessions.has(session.fileId)) {
-        const existingSession = this.documentSessions.get(session.fileId)!;
+      const existingSession = this.documentSessions.get(session.fileId)!;
+      if (existingSession && existingSession.isConnected()) {
         return existingSession;
       }
 
@@ -293,8 +293,8 @@ export class JupyterLabAdapter {
       const session = await this.requestDocSession(path, "notebook");
 
       // Check if we already have a session for this notebook
-      if (this.notebookSessions.has(session.fileId)) {
-        const existingSession = this.notebookSessions.get(session.fileId)!;
+      const existingSession = this.notebookSessions.get(session.fileId)!;
+      if (existingSession && existingSession.isConnected()) {
         return existingSession;
       }
 

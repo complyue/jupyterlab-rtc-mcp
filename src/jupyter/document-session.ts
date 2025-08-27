@@ -89,6 +89,9 @@ export abstract class DocumentSession {
    * @returns Promise that resolves when the document is synchronized
    */
   async ensureSynchronized(): Promise<void> {
+    if (!this.isConnected) {
+      throw new Error(`Document session disconnected: ${this._session.fileId}`);
+    }
     // If already synchronized, return immediately
     if (this.isSynced()) {
       return;
