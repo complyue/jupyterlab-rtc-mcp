@@ -120,14 +120,21 @@ export class JupyterLabAdapter {
   private _token: string | undefined;
   private _kernelManager: KernelManager;
   private sessionTimeout: number;
+  public maxWsPayload: number;
   private sessionTimeoutTimers: Map<string, ReturnType<typeof setTimeout>>;
 
   private documentSessions: Map<string, TextDocumentSession>;
   private notebookSessions: Map<string, NotebookSession>;
   private _cookieManager: CookieManager;
 
-  constructor(sessionTimeout?: number, baseUrl?: string, token?: string) {
+  constructor(
+    sessionTimeout?: number,
+    maxWsPayload?: number,
+    baseUrl?: string,
+    token?: string,
+  ) {
     this.sessionTimeout = sessionTimeout || 5 * 60 * 1000; // Default to 5 minutes
+    this.maxWsPayload = maxWsPayload || 100 * 1024 * 1024; // Default to 100 MB
     this.sessionTimeoutTimers = new Map();
 
     this._baseUrl =
@@ -257,19 +264,13 @@ export class JupyterLabAdapter {
       // Check if we already have a session for this document
       if (this.documentSessions.has(session.fileId)) {
         const existingSession = this.documentSessions.get(session.fileId)!;
-        if (!existingSession.isConnected()) {
-          await existingSession.connect();
-        }
         return existingSession;
       }
 
       // Create a new document session
-      const documentSession = new TextDocumentSession(session, this);
+      const documentSession = new TextDocumentSession(session, this, undefined);
 
       this.documentSessions.set(session.fileId, documentSession);
-
-      // Connect to the document
-      await documentSession.connect();
 
       // Set up session timeout
       this.setupSessionTimeout(session.fileId);
@@ -294,9 +295,6 @@ export class JupyterLabAdapter {
       // Check if we already have a session for this notebook
       if (this.notebookSessions.has(session.fileId)) {
         const existingSession = this.notebookSessions.get(session.fileId)!;
-        if (!existingSession.isConnected()) {
-          await existingSession.connect();
-        }
         return existingSession;
       }
 
@@ -313,9 +311,6 @@ export class JupyterLabAdapter {
       ).originalPath = path;
 
       this.notebookSessions.set(session.fileId, notebookSession);
-
-      // Connect to the notebook
-      await notebookSession.connect();
 
       // Set up session timeout
       this.setupSessionTimeout(session.fileId);

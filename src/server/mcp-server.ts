@@ -1,10 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { z } from "zod";
+
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
 import { NotebookTools } from "../tools/notebook-tools.js";
 import { DocumentTools } from "../tools/document-tools.js";
 import { URLTools } from "../tools/url-tools.js";
-import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+
+import pkg from "../../package.json" assert { type: "json" };
 
 /**
  * MCP Server implementation for JupyterLab RTC
@@ -19,12 +22,12 @@ export class JupyterLabMCPServer {
   private documentTools: DocumentTools;
   private urlTools: URLTools;
 
-  constructor(sessionTimeout?: number, name?: string, version?: string) {
+  constructor(sessionTimeout?: number, maxWsPayload?: number) {
     // Create MCP server using the idiomatic McpServer class
     this.server = new McpServer(
       {
-        name: name || "jupyterlab-rtc-mcp",
-        version: version || "0.1.0",
+        name: pkg.name,
+        version: pkg.version,
       },
       {
         capabilities: {
@@ -34,7 +37,7 @@ export class JupyterLabMCPServer {
     );
 
     // Initialize JupyterLab adapter
-    this.jupyterAdapter = new JupyterLabAdapter(sessionTimeout);
+    this.jupyterAdapter = new JupyterLabAdapter(sessionTimeout, maxWsPayload);
 
     // Initialize tools
     this.urlTools = new URLTools(this.jupyterAdapter);

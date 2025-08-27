@@ -14,12 +14,13 @@ import { logger } from "./utils/logger.js";
 
 interface ServerConfig {
   sessionTimeout?: number;
+  maxWsPayload?: number;
 }
-
 function parseCommandLineArgs(): ServerConfig {
   const args = process.argv.slice(2);
   const config: ServerConfig = {
-    sessionTimeout: 5 * 60 * 1000 // Default to 5 minutes in milliseconds
+    sessionTimeout: 5 * 60 * 1000, // Default to 5 minutes in milliseconds
+    maxWsPayload: 100 * 1024 * 1024 // Default to 100 MB in bytes
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -33,6 +34,14 @@ function parseCommandLineArgs(): ServerConfig {
       }
       config.sessionTimeout = timeoutMinutes * 60 * 1000; // Convert minutes to milliseconds
       i++; // Skip next argument
+    } else if (arg === '--max-ws-payload') {
+      const payloadMB = parseInt(args[i + 1], 10);
+      if (isNaN(payloadMB) || payloadMB < 1) {
+        logger.error(`Invalid max payload: ${args[i + 1]}. Must be a positive number of MB`);
+        process.exit(1);
+      }
+      config.maxWsPayload = payloadMB * 1024 * 1024; // Convert MB to bytes
+      i++; // Skip next argument
     }
   }
 
@@ -44,7 +53,7 @@ async function main() {
   const config = parseCommandLineArgs();
 
   // Create MCP server
-  const server = new JupyterLabMCPServer(config.sessionTimeout);
+  const server = new JupyterLabMCPServer(config.sessionTimeout, config.maxWsPayload);
 
   // Start server with stdio transport
   try {

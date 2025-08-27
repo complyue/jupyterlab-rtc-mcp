@@ -19,8 +19,7 @@ export class JupyterLabHTTPTransport {
   private transports: { [sessionId: string]: StreamableHTTPServerTransport };
   private port: number;
   private host: string;
-  // eslint-disable-next-line no-unused-vars
-  private mcpServer?: { connect: (_transport: Transport) => Promise<void> };
+  private mcpServer?: { connect: (transport: Transport) => Promise<void> };
 
   /**
    * Create a new HTTP transport
@@ -119,8 +118,7 @@ export class JupyterLabHTTPTransport {
    * Set the MCP server to use with this transport
    * @param server The MCP server instance
    */
-  // eslint-disable-next-line no-unused-vars
-  setMCPServer(server: { connect: (_transport: Transport) => Promise<void> }): void {
+  setMCPServer(server: { connect: (transport: Transport) => Promise<void> }): void {
     this.mcpServer = server;
   }
 

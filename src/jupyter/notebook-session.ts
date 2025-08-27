@@ -44,18 +44,6 @@ export class NotebookSession extends DocumentSession {
   }
 
   /**
-   * Reconnect to the JupyterLab WebSocket server
-   */
-  override async reconnect(): Promise<void> {
-    const kernelConn = this.kernelConn;
-    if (kernelConn) {
-      kernelConn.dispose();
-      this.kernelConn = null;
-    }
-    await super.reconnect();
-  }
-
-  /**
    * Get the Yjs document (embedded in YNotebook)
    */
   override getDocument(): Y.Doc {

@@ -8,6 +8,8 @@
  * - debug: Debug messages (disabled by default)
  */
 
+import { inspect } from "util";
+
 // Default to INFO level if LOG_LEVEL is not set
 const DEFAULT_LOG_LEVEL = 2;
 
@@ -55,12 +57,12 @@ export class Logger {
       let errorMessage = "";
       let stackTrace = "";
 
-      if (error) {
+      if (error !== undefined && error !== null) {
         if (error instanceof Error) {
           errorMessage = `: ${error.message}`;
           stackTrace = error.stack ? `\n${error.stack}` : "";
         } else {
-          errorMessage = `: ${JSON.stringify(error)}`;
+          errorMessage = `: ${inspect(error, { depth: 3, colors: false, maxArrayLength: 10 })}`;
         }
       }
 
@@ -87,7 +89,7 @@ export class Logger {
           errorMessage = `: ${error.message}`;
           stackTrace = error.stack ? `\n${error.stack}` : "";
         } else {
-          errorMessage = `: ${JSON.stringify(error)}`;
+          errorMessage = `: ${inspect(error, { depth: 3, colors: false, maxArrayLength: 10 })}`;
         }
       }
 

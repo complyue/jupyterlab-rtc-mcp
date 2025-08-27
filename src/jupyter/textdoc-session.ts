@@ -12,13 +12,17 @@ import { JupyterLabAdapter } from "./adapter.js";
 export class TextDocumentSession extends DocumentSession {
   private yText: Y.Text;
 
-  constructor(session: ISessionModel, jupyterAdapter: JupyterLabAdapter) {
+  constructor(
+    session: ISessionModel,
+    jupyterAdapter: JupyterLabAdapter,
+    ydoc?: Y.Doc,
+  ) {
     // Create a Y.Doc for the text document
-    const ydoc = new Y.Doc();
-    super(session, jupyterAdapter, ydoc);
+    const ydocInstance = ydoc || new Y.Doc();
+    super(session, jupyterAdapter, ydocInstance);
 
     // Get or create the shared text object
-    this.yText = ydoc.getText("content");
+    this.yText = ydocInstance.getText("content");
   }
 
   /**

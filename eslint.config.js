@@ -43,7 +43,7 @@ export default [
     },
     rules: {
       // Add any TypeScript-specific rules here
-      '@typescript-eslint/no-unused-vars': 'error',
+      'no-unused-vars': ["error", { "args": "none" }],
       '@typescript-eslint/no-explicit-any': 'warn',
     },
   },

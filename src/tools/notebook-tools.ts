@@ -363,7 +363,7 @@ export class NotebookTools {
    * @param session Notebook session
    * @returns Array of collaborator information
    */
-  private _getCollaborators(session: any): CollaboratorInfo[] {
+  private _getCollaborators(session: unknown): CollaboratorInfo[] {
     // This is a placeholder implementation
     // In a real implementation, this would extract collaborator information
     // from the Yjs awareness protocol or another source
@@ -374,9 +374,6 @@ export class NotebookTools {
     // 1. Getting awareness information from the Yjs document: session.getDocument()
     // 2. Extracting user information from the WebSocket provider
     // 3. Formatting the data into CollaboratorInfo objects
-
-    // Placeholder comment to use the parameter and avoid linting errors
-    void session;
 
     return collaborators;
   }
