@@ -110,7 +110,7 @@ export class NotebookTools {
       });
       const notebookPath = path || "";
       // Ensure proper URL construction by adding a trailing slash if path is empty
-      const contentsPath = notebookPath || "/";
+      const contentsPath = URLExt.encodeParts(notebookPath) || "/";
       const url = URLExt.join(settings.baseUrl, "/api/contents", contentsPath);
 
       const init: RequestInit = {
@@ -166,7 +166,7 @@ export class NotebookTools {
         currentDepth: number = 0,
       ): Promise<boolean> => {
         // Ensure proper URL construction
-        const contentsPath = targetDir || "/";
+        const contentsPath = URLExt.encodeParts(targetDir) || "/";
         const url = URLExt.join(
           settings.baseUrl,
           "/api/contents",
@@ -423,7 +423,11 @@ export class NotebookTools {
         baseUrl: this.jupyterAdapter["baseUrl"],
       });
 
-      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+      const url = URLExt.join(
+        settings.baseUrl,
+        "/api/contents",
+        URLExt.encodeParts(path),
+      );
 
       const init: RequestInit = {
         method: "GET",
@@ -922,9 +926,14 @@ export class NotebookTools {
       const { URLExt } = await import("@jupyterlab/coreutils");
 
       const settings = ServerConnection.makeSettings({
-        baseUrl: this.jupyterAdapter["baseUrl"],
+        baseUrl: this.jupyterAdapter.baseUrl,
       });
-      const url = URLExt.join(settings.baseUrl, "/api/contents", path);
+
+      const url = URLExt.join(
+        settings.baseUrl,
+        "/api/contents",
+        URLExt.encodeParts(path),
+      );
 
       // Validate that the path ends with .ipynb
       if (!path.toLowerCase().endsWith(".ipynb")) {

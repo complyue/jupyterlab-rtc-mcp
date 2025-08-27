@@ -594,7 +594,11 @@ export class JupyterLabAdapter {
 
     const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
     const rootPath = params.root_path || "";
-    const url = URLExt.join(settings.baseUrl, "/api/contents", rootPath);
+    const url = URLExt.join(
+      settings.baseUrl,
+      "/api/contents",
+      URLExt.encodeParts(rootPath),
+    );
 
     const init: RequestInit = {
       method: "GET",
@@ -743,7 +747,7 @@ export class JupyterLabAdapter {
     let url = URLExt.join(
       settings.baseUrl,
       "api/collaboration/session",
-      encodeURIComponent(path),
+      URLExt.encodeParts(path),
     );
 
     const init: RequestInit = {
