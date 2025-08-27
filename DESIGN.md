@@ -1065,6 +1065,32 @@ The timeout value is specified in minutes. If not provided, the default timeout 
 
 When a session times out, it is automatically terminated and resources are freed. Any subsequent operations on the notebook will create a new session.
 
+### Maximum WebSocket Payload Configuration
+
+The maximum WebSocket payload size can be configured using the `--max-ws-payload` command line argument:
+
+**For stdio mode (production):**
+```bash
+# Set maximum WebSocket payload to 50 MB
+npx jupyterlab-rtc-mcp --max-ws-payload 50
+
+# Set maximum WebSocket payload to 200 MB
+npx jupyterlab-rtc-mcp --max-ws-payload 200
+```
+
+**For HTTP mode (debugging):**
+```bash
+# Set maximum WebSocket payload to 50 MB
+npx jupyterlab-rtc-mcp-http --max-ws-payload 50
+
+# Set maximum WebSocket payload to 200 MB
+npx jupyterlab-rtc-mcp-http --max-ws-payload 200
+```
+
+The payload size value is specified in megabytes (MB). If not provided, the default maximum payload size is 100 MB.
+
+This setting controls the maximum size of data that can be transmitted over WebSocket connections for real-time collaboration. Larger payloads may be needed for notebooks with large cell outputs, images, or other substantial content, but may impact performance and memory usage.
+
 ### Real-time Collaboration Infrastructure
 
 The server leverages JupyterLab's built-in RTC infrastructure:

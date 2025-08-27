@@ -151,6 +151,9 @@ npx jupyterlab-rtc-mcp
 
 # Set session timeout (in minutes)
 npx jupyterlab-rtc-mcp --session-timeout 10
+
+# Set maximum WebSocket payload size (in MB)
+npx jupyterlab-rtc-mcp --max-ws-payload 200
 ```
 
 #### HTTP Transport
@@ -170,6 +173,9 @@ npx jupyterlab-rtc-mcp-http --ip 0.0.0.0 --port 3080
 
 # Set session timeout (in minutes)
 npx jupyterlab-rtc-mcp-http --session-timeout 10
+
+# Set maximum WebSocket payload size (in MB)
+npx jupyterlab-rtc-mcp-http --max-ws-payload 200
 ```
 
 ### HTTP Transport Usage
