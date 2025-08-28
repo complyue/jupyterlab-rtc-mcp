@@ -1,6 +1,50 @@
 #!/usr/bin/env node
 
+// Capture real streams before importing dependencies
+const realStdin = process.stdin;
+const realStdout = process.stdout;
+
+import { createWriteStream } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { mkdtempSync, unlink } from 'fs';
+
+function redirectDepsOutLog() {
+  // Determine log file path from environment or generate temporary file
+  let unlinkDepsOutFile = false,
+    depsOutFn = process.env.JUPYTERLAB_DEPS_LOG_FILE;
+  // keep the file if a name specified via env var, for debug purpose
+  if (!depsOutFn) { // or try unlink it,
+    // so the disk space it occupies will be auto freed after process exit
+    unlinkDepsOutFile = true;
+    const tempDir = mkdtempSync(join(tmpdir(), 'jupyterlab-rtc-mcp-'));
+    depsOutFn = join(tempDir, 'deps-out.log');
+  }
+
+  // Create fake stdout that redirects to log file
+  const fakeStdout = createWriteStream(depsOutFn, { flags: 'a' });
+  if (unlinkDepsOutFile) {
+    // Make it deleted, free space after this process exited
+    unlink(depsOutFn, err => {
+      // this is supposed to succeed on *nix, fail on Windows
+      // sorry Windows users, you'll have to cleanup the log files by hand
+    });
+  }
+
+  // Replace process.stdout to fool our dependencies
+  Object.defineProperty(process, 'stdout', {
+    get: () => fakeStdout,
+    configurable: true
+  });
+
+  return depsOutFn;
+}
+
+const depsLogFile = redirectDepsOutLog();
+
+
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
 import { JupyterLabMCPServer } from "./server/mcp-server.js";
 import { logger } from "./utils/logger.js";
 
@@ -49,6 +93,9 @@ function parseCommandLineArgs(): ServerConfig {
 }
 
 async function main() {
+  // Log the fake stdout file location to stderr
+  logger.info(`Dependency logs redirected to: ${depsLogFile}`);
+
   // Parse command line arguments
   const config = parseCommandLineArgs();
 
@@ -57,7 +104,7 @@ async function main() {
 
   // Start server with stdio transport
   try {
-    const transport = new StdioServerTransport();
+    const transport = new StdioServerTransport(realStdin, realStdout);
     await server.connect(transport);
     logger.info(`JupyterLab RTC MCP Server started successfully with stdio transport`);
   } catch (error) {
