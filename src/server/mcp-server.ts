@@ -2,12 +2,36 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { z } from "zod";
 
+import pkg from "../../package.json" assert { type: "json" };
+
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
 import { NotebookTools } from "../tools/notebook-tools.js";
 import { DocumentTools } from "../tools/document-tools.js";
 import { URLTools } from "../tools/url-tools.js";
+import { NotebookSession } from "../jupyter/notebook-session.js";
 
-import pkg from "../../package.json" assert { type: "json" };
+/**
+ * Sanitized notebook session object for JSON serialization
+ */
+interface SanitizedNotebookSession {
+  path: string;
+  session_id: string;
+  file_id: string;
+  status: "connected" | "connecting" | "disconnected";
+  cell_count: number;
+  last_activity: string;
+  message: string;
+}
+
+/**
+ * Query notebook sessions result object
+ */
+interface QueryNotebookSessionsResult {
+  root_path: string;
+  sessions: SanitizedNotebookSession[];
+  total_sessions: number;
+  active_sessions: number;
+}
 
 /**
  * MCP Server implementation for JupyterLab RTC
@@ -66,6 +90,33 @@ export class JupyterLabMCPServer {
   }
 
   /**
+   * Sanitize notebook sessions to remove circular references for JSON serialization
+   * @param sessions Array of NotebookSession objects
+   * @returns Array of sanitized session objects safe for JSON serialization
+   */
+  private sanitizeNotebookSessions(
+    sessions: NotebookSession[],
+  ): SanitizedNotebookSession[] {
+    return sessions.map((session) => ({
+      path: session.docpath,
+      session_id: session.session.sessionId,
+      file_id: session.session.fileId,
+      status: session.isConnected()
+        ? session.isSynced()
+          ? "connected"
+          : "connecting"
+        : "disconnected",
+      cell_count: session.getYNotebook().cells.length,
+      last_activity: new Date().toISOString(), // Current time as approximation
+      message: session.isConnected()
+        ? session.isSynced()
+          ? "RTC session is active and synchronized"
+          : "RTC session is connecting"
+        : "RTC session is disconnected",
+    }));
+  }
+
+  /**
    * Register URL tools
    */
   private registerURLTools(): void {
@@ -112,11 +163,20 @@ export class JupyterLabMCPServer {
         const sessions = this.jupyterAdapter.listCurrNotebookSessions(
           root_path || "",
         );
+        const sanitizedSessions = this.sanitizeNotebookSessions(sessions);
+        const result: QueryNotebookSessionsResult = {
+          root_path: root_path || "",
+          sessions: sanitizedSessions,
+          total_sessions: sanitizedSessions.length,
+          active_sessions: sanitizedSessions.filter(
+            (s) => s.status === "connected",
+          ).length,
+        };
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(sessions, null, 2),
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };

@@ -354,10 +354,7 @@ export class JupyterLabAdapter {
     let sessionFileId = null;
     for (const [fileId, session] of this.documentSessions) {
       const sessionInfo = session.session;
-      if (
-        sessionInfo.fileId === params.path ||
-        sessionInfo.fileId.endsWith(params.path)
-      ) {
+      if (sessionInfo.docpath === params.path) {
         sessionToClose = session;
         sessionFileId = fileId;
         break;
@@ -413,15 +410,13 @@ export class JupyterLabAdapter {
    * @returns MCP response indicating success
    */
   async endNotebookSession(params: { path: string }): Promise<CallToolResult> {
+    logger.info(`Attempting to end notebook session for path: ${params.path}`);
     // Find the session for this notebook
     let sessionToClose = null;
     let sessionFileId = null;
     for (const [fileId, session] of this.notebookSessions) {
       const sessionInfo = session.session;
-      if (
-        sessionInfo.fileId === params.path ||
-        sessionInfo.fileId.endsWith(params.path)
-      ) {
+      if (sessionInfo.docpath === params.path) {
         sessionToClose = session;
         sessionFileId = fileId;
         break;
@@ -452,6 +447,7 @@ export class JupyterLabAdapter {
         ],
       };
     } else {
+      logger.info(`No matching session found for path ${params.path}`);
       return {
         content: [
           {
