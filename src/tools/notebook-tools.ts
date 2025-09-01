@@ -1,6 +1,11 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 
 import { JupyterLabAdapter, executeJupyterCell } from "../jupyter/adapter.js";
+import {
+  createSuccessResult,
+  createErrorResult,
+} from "../utils/response-utils.js";
+
 import { logger } from "../utils/logger.js";
 
 import {
@@ -285,21 +290,42 @@ export class NotebookTools {
       // Extract notebooks using the closure function
       const moreNbs = await extractNotebooks(notebookPath, 0);
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                more_exist: moreNbs,
-                notebooks: notebooks,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
+      // Calculate session statistics
+      const activeSessions = notebooks.filter((nb) => nb.rtc_session).length;
+      const totalSize = notebooks.reduce((sum, nb) => sum + (nb.size || 0), 0);
+      const lastScan = new Date().toISOString();
+
+      const message = `Found ${notebooks.length} notebooks${moreNbs ? " (more available)" : ""}${activeSessions > 0 ? ` (${activeSessions} with active RTC sessions)` : ""}. Focus on notebooks with active sessions first for immediate collaboration.`;
+
+      const nextSteps = moreNbs
+        ? [
+            "Increase maxDepth to search deeper into nested directories for more notebooks",
+            "Use a more nested path to search inside a specific deeper directory",
+            "Select a notebook with active session for real-time collaboration",
+          ]
+        : activeSessions > 0
+          ? [
+              "Select a notebook with active session for real-time collaboration",
+              "Use get_nb_stat on specific notebooks for detailed information",
+            ]
+          : [
+              "Use get_nb_stat on specific notebooks for detailed information",
+              "Assign kernels to notebooks to start RTC sessions",
+            ];
+
+      const summary = {
+        total_notebooks: notebooks.length,
+        active_sessions: activeSessions,
+        total_size: `${(totalSize / 1024).toFixed(1)}KB`,
+        last_scan: lastScan,
       };
+
+      return createSuccessResult(
+        "list_nbs",
+        message,
+        { summary, notebooks, more_exist: moreNbs },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(`Failed to list notebooks from ${path || "root"}`, error);
       throw new Error(
@@ -477,14 +503,48 @@ export class NotebookTools {
         };
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
+      // Get RTC session information directly from the created session
+      const rtcSession = {
+        session_id: nbSession.session.sessionId,
+        file_id: nbSession.session.fileId,
+        connected: nbSession.isConnected(),
+        synced: nbSession.isSynced(),
       };
+      const hasActiveSession = rtcSession !== undefined;
+
+      const message = `Retrieved status for notebook '${path}' with ${result.cell_count} cells${hasActiveSession ? ". RTC session is active and ready for operations" : ". No active RTC session - kernel assignment will create one"}.`;
+
+      const nextSteps =
+        result.cell_count === 0
+          ? [
+              "Add cells to the notebook to start working",
+              "Assign a kernel to enable execution and RTC collaboration",
+            ]
+          : hasActiveSession
+            ? [
+                "Execute cells to see current output",
+                "Modify content if needed",
+                "Check kernel health for performance",
+              ]
+            : [
+                "Assign a kernel to start an RTC session for collaboration",
+                "Execute cells to see current output",
+                "Modify content if needed",
+              ];
+
+      // Add RTC session info to result
+      const enhancedResult = {
+        ...result,
+        rtc_session: hasActiveSession ? "active" : "inactive",
+        session_details: rtcSession,
+      };
+
+      return createSuccessResult(
+        "get_nb_stat",
+        message,
+        enhancedResult,
+        nextSteps,
+      );
     } catch (error) {
       logger.error(`Failed to get status for notebook ${path}`, error);
       throw new Error(
@@ -766,14 +826,30 @@ export class NotebookTools {
         max_cell_data: maxCellData,
       };
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
+      // Get RTC session information directly from the created session
+      const rtcSession = {
+        session_id: nbSession.session.sessionId,
+        file_id: nbSession.session.fileId,
+        connected: nbSession.isConnected(),
+        synced: nbSession.isSynced(),
       };
+      const hasActiveSession = rtcSession !== undefined;
+
+      const message = `Read ${cells.length} cells from notebook '${path}'${anyTruncated ? " (some content was truncated)" : ""}${hasActiveSession ? ". RTC session is active" : ". No active RTC session"}. Cells appear readable and actionable.`;
+
+      const nextSteps = hasActiveSession
+        ? [
+            "Execute cells to see current output",
+            "Modify cells if needed",
+            "Analyze cell outputs for insights",
+          ]
+        : [
+            "Execute cells to see current output",
+            "Modify cells if needed",
+            "Assign a kernel to start an RTC session for collaboration",
+          ];
+
+      return createSuccessResult("read_nb_cells", message, result, nextSteps);
     } catch (error) {
       logger.error(
         `Failed to read cells from notebook ${path}. Cell ranges: ${JSON.stringify(ranges)}`,
@@ -869,24 +945,31 @@ export class NotebookTools {
         }
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                message: `Successfully modified ${modifications.length} cell ranges${exec !== false ? " and executed cells" : ""}`,
-                modified_ranges: modifications.length,
-                executed: exec !== false,
-                execution_results:
-                  exec !== false ? executionResults : undefined,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const message = `Successfully modified ${modifications.length} cell ranges${exec !== false ? " and executed cells" : ""} in notebook. RTC session maintained changes in real-time.`;
+
+      const nextSteps =
+        exec !== false
+          ? [
+              "Check execution results for any errors",
+              "Verify the execution results",
+              "Continue with next cell modifications",
+            ]
+          : [
+              "Execute cells to see the changes",
+              "Save changes if satisfied",
+              "Continue with additional modifications if needed",
+            ];
+
+      return createSuccessResult(
+        "modify_nb_cells",
+        message,
+        {
+          modified_ranges: modifications.length,
+          executed: exec !== false,
+          execution_results: exec !== false ? executionResults : undefined,
+        },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(
         `Failed to modify cells in notebook ${path}. Modifications count: ${modifications.length}`,
@@ -986,14 +1069,27 @@ export class NotebookTools {
         );
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Successfully created empty notebook at ${path}`,
-          },
-        ],
+      const message = `Successfully created empty notebook at '${path}'. Ready for initial setup and RTC session creation.`;
+
+      const nextSteps = [
+        "Add initial cells to start working",
+        "Assign a kernel for execution (this will create an RTC session)",
+        "Set up basic notebook structure",
+        "Begin collaborative work once session is established",
+      ];
+
+      const result = {
+        path: path,
+        type: "notebook",
+        size: 72, // Standard empty notebook size
+        cells: 0,
+        urls: {
+          notebook: `${this.jupyterAdapter.baseUrl}/notebooks/${path}`,
+          edit: `${this.jupyterAdapter.baseUrl}/edit/${path}`,
+        },
       };
+
+      return createSuccessResult("create_notebook", message, result, nextSteps);
     } catch (error) {
       logger.error(`Failed to create notebook at ${path}`, error);
       throw new Error(
@@ -1087,23 +1183,32 @@ export class NotebookTools {
         }
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                message: `Successfully inserted cells`,
-                executed: exec !== false,
-                execution_results:
-                  exec !== false ? executionResults : undefined,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const message = `Successfully inserted ${cells.length} cells at position ${position}${exec !== false ? " and executed them" : ""} in notebook. RTC session maintained changes in real-time.`;
+
+      const nextSteps =
+        exec !== false
+          ? [
+              "Check execution results for any errors",
+              "Verify the inserted cells are working correctly",
+              "Continue building the notebook structure",
+            ]
+          : [
+              "Execute the cells to see the output",
+              "Verify the inserted cells are working correctly",
+              "Continue building the notebook structure",
+            ];
+
+      return createSuccessResult(
+        "insert_nb_cells",
+        message,
+        {
+          position,
+          cells_inserted: cells.length,
+          executed: exec !== false,
+          execution_results: exec !== false ? executionResults : undefined,
+        },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(
         `Failed to insert cells into notebook ${path} at position ${position}. Cells count: ${cells.length}`,
@@ -1175,20 +1280,23 @@ export class NotebookTools {
         }
       });
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                message: `Successfully deleted ${deletedCells} cells`,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const message = `Successfully deleted ${deletedCells} cells from notebook '${path}'. RTC session maintained changes in real-time.`;
+
+      const nextSteps = [
+        "Add new cells if needed to replace deleted content",
+        "Execute remaining cells to verify notebook integrity",
+        "Review notebook structure after deletions",
+      ];
+
+      return createSuccessResult(
+        "delete_nb_cells",
+        message,
+        {
+          cells_deleted: deletedCells,
+          ranges_processed: ranges.length,
+        },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(
         `Failed to delete cells from notebook ${path}. Ranges: ${JSON.stringify(ranges)}`,
@@ -1236,22 +1344,32 @@ export class NotebookTools {
 
       await nbSession.restartKernel(kernel_name, clear_outputs, exec);
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                message: `Successfully restarted notebook kernel`,
-                cleared_outputs: !!clear_outputs,
-                executed_cells: exec !== false,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const message = `Successfully restarted kernel for notebook '${path}'${kernel_name ? ` with '${kernel_name}'` : ""}. RTC session maintained throughout restart process.`;
+
+      const nextSteps =
+        exec !== false
+          ? [
+              "Check execution results for any errors",
+              "Verify all cells executed correctly with new kernel",
+              "Continue working with refreshed kernel environment",
+            ]
+          : [
+              "Execute cells to test the restarted kernel",
+              "Verify kernel is responding correctly",
+              "Continue working with refreshed kernel environment",
+            ];
+
+      return createSuccessResult(
+        "restart_nb_kernel",
+        message,
+        {
+          kernel_restarted: true,
+          cleared_outputs: !!clear_outputs,
+          executed_cells: exec !== false,
+          kernel_name: kernel_name || "default",
+        },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(
         `Failed to restart kernel for notebook ${path}. Clear outputs: ${!!clear_outputs}, Execute cells: ${!!exec}, Kernel name: ${kernel_name || "default"}`,
@@ -1351,14 +1469,18 @@ export class NotebookTools {
         }
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({ kernels }, null, 2),
-          },
-        ],
-      };
+      const message = `📋 Found ${kernels.length} available kernels. Ready for notebook kernel assignments.`;
+
+      const nextSteps = [
+        "Assign selected kernel to your notebook to start working",
+      ];
+
+      return createSuccessResult(
+        "list_available_kernels",
+        message,
+        { kernels },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(
         `Failed to list available kernels. Base URL: ${this.jupyterAdapter["baseUrl"]}`,
@@ -1407,69 +1529,60 @@ export class NotebookTools {
       // Get kernel connection with the specified kernel name
       const kernelConn = await nbSession.getKernelConnection(kernel_name);
       if (!kernelConn) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(
-                {
-                  success: false,
-                  message: `Failed to assign kernel '${kernel_name}' to notebook '${path}'. Could not establish kernel connection.`,
-                  kernel_name: kernel_name,
-                  notebook_path: path,
-                },
-                null,
-                2,
-              ),
-            },
+        return createErrorResult(
+          "assign_notebook_kernel",
+          "Failed to establish kernel connection",
+          "KERNEL_CONNECTION_FAILED",
+          {
+            kernel_name: kernel_name,
+            notebook_path: path,
+          },
+          [
+            "Check that the kernel name is correct and available",
+            "Use list_available_kernels to see available options",
           ],
-        };
+        );
       }
 
       // The kernel is now assigned and connected
       // Return success with kernel information
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                success: true,
-                message: `Successfully assigned kernel '${kernel_name}' to notebook '${path}'`,
-                kernel_name: kernel_name,
-                notebook_path: path,
-                kernel_id: kernelConn.id,
-                kernel_display_name: kernelConn.name,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const message = `✅ Successfully assigned kernel '${kernel_name}' to notebook '${path}'.`;
+
+      const nextSteps = ["Execute cells to test the new kernel"];
+
+      return createSuccessResult(
+        "assign_nb_kernel",
+        message,
+        {
+          kernel_assigned: true,
+          kernel_name: kernel_name,
+          notebook_path: path,
+          kernel_id: kernelConn.id,
+          kernel_display_name: kernelConn.name,
+        },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(
         `Failed to assign notebook kernel. Notebook path: ${path}, Kernel name: ${kernel_name}`,
         error,
       );
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                success: false,
-                message: `Failed to assign kernel '${kernel_name}' to notebook '${path}': ${error instanceof Error ? error.message : String(error)}`,
-                kernel_name: kernel_name,
-                notebook_path: path,
-              },
-              null,
-              2,
-            ),
-          },
+      return createErrorResult(
+        "assign_notebook_kernel",
+        "Failed to assign kernel to notebook",
+        "KERNEL_ASSIGNMENT_FAILED",
+        {
+          kernel_name: kernel_name,
+          notebook_path: path,
+          error_details: error instanceof Error ? error.message : String(error),
+        },
+        [
+          "Check that the notebook exists",
+          "Verify the kernel name is available",
+          "Try restarting the notebook kernel",
         ],
-      };
+      );
     }
   }
 
@@ -1548,23 +1661,24 @@ export class NotebookTools {
         });
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                message: `Successfully executed ${ranges.length} cell ranges`,
-                executed_ranges: ranges.length,
-                executed_cells: cellsToExecute.length,
-                execution_results: executionResults,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const message = `Successfully executed ${cellsToExecute.length} cells across ${ranges.length} ranges. RTC session maintained execution results in real-time.`;
+
+      const nextSteps = [
+        "Check execution results for any errors",
+        "Review cell outputs for expected results",
+        "Continue with next steps based on execution outcomes",
+      ];
+
+      return createSuccessResult(
+        "execute_nb_cells",
+        message,
+        {
+          executed_ranges: ranges.length,
+          executed_cells: cellsToExecute.length,
+          execution_results: executionResults,
+        },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(
         `Failed to execute cells in notebook ${path}. Ranges: ${JSON.stringify(ranges)}`,

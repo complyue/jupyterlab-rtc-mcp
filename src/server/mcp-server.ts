@@ -133,7 +133,7 @@ export class JupyterLabMCPServer {
     // Tool to extract notebook path from URL
     this.server.tool(
       "nb_path_from_url",
-      "Extract the notebook path from a full JupyterLab URL with proper URL decoding",
+      "Extract the notebook path from a full JupyterLab URL with proper URL decoding and RTC session status",
       {
         url: z.string().describe("Full JupyterLab URL to a notebook"),
       },
@@ -196,7 +196,7 @@ export class JupyterLabMCPServer {
     // Tool to list notebooks
     this.server.tool(
       "list_nbs",
-      "List all notebook files under specified directory with RTC session and collaborator information",
+      "List all notebook files under specified directory with summary statistics and active session counts",
       {
         path: z
           .string()
@@ -235,7 +235,7 @@ export class JupyterLabMCPServer {
     // Tool to get notebook status
     this.server.tool(
       "get_nb_stat",
-      "Get status information about a notebook",
+      "Get status information about a notebook (establishes RTC session)",
       { path: z.string().describe("Path to the notebook file") },
       async ({ path }) => {
         return await this.notebookTools.getNotebookStatus(path);
@@ -245,7 +245,7 @@ export class JupyterLabMCPServer {
     // Tool to read notebook cells
     this.server.tool(
       "read_nb_cells",
-      "Read multiple cells by specifying ranges with formal output schema and truncation support",
+      "Read multiple cells by specifying ranges (establishes RTC session)",
       {
         path: z.string().describe("Path to the notebook file"),
         ranges: z
@@ -279,7 +279,7 @@ export class JupyterLabMCPServer {
     // Tool to modify notebook cells
     this.server.tool(
       "modify_nb_cells",
-      "Modify multiple cells by specifying ranges, execute them if not disabled",
+      "Modify multiple cells by specifying ranges, execute them if not disabled (establishes RTC session)",
       {
         path: z.string().describe("Path to the notebook file"),
         modifications: z
@@ -320,7 +320,7 @@ export class JupyterLabMCPServer {
     // Tool to insert notebook cells
     this.server.tool(
       "insert_nb_cells",
-      "Insert multiple cells at specified location, execute them if not disabled",
+      "Insert multiple cells at specified location, execute them if not disabled (establishes RTC session)",
       {
         path: z.string().describe("Path to the notebook file"),
         position: z.number().describe("Position to insert the cells"),
@@ -360,7 +360,7 @@ export class JupyterLabMCPServer {
     // Tool to delete notebook cells
     this.server.tool(
       "delete_nb_cells",
-      "Delete multiple cells by specifying ranges",
+      "Delete multiple cells by specifying ranges (establishes RTC session)",
       {
         path: z.string().describe("Path to the notebook file"),
         ranges: z
@@ -383,7 +383,7 @@ export class JupyterLabMCPServer {
     // Tool to execute notebook cells
     this.server.tool(
       "execute_nb_cells",
-      "Execute multiple cells by specifying ranges",
+      "Execute multiple cells by specifying ranges (establishes RTC session)",
       {
         path: z.string().describe("Path to the notebook file"),
         ranges: z
@@ -416,7 +416,7 @@ export class JupyterLabMCPServer {
     // Tool to restart notebook kernel
     this.server.tool(
       "restart_nb_kernel",
-      "Restart the kernel of a specified notebook",
+      "Restart the kernel of a specified notebook (establishes RTC session)",
       {
         path: z.string().describe("Path to the notebook file"),
         clear_outputs: z
@@ -455,7 +455,7 @@ export class JupyterLabMCPServer {
     // Tool to assign a kernel to a notebook
     this.server.tool(
       "assign_nb_kernel",
-      "Assign a specific kernel to a notebook",
+      "Assign a specific kernel to a notebook (establishes RTC session)",
       {
         path: z.string().describe("Path to the notebook file"),
         kernel_name: z

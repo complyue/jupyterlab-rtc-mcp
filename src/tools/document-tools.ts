@@ -1,7 +1,10 @@
-import { JupyterLabAdapter } from "../jupyter/adapter.js";
-import { logger } from "../utils/logger.js";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+
 import { DocumentInfo } from "../jupyter/types.js";
+import { JupyterLabAdapter } from "../jupyter/adapter.js";
+import { createSuccessResult } from "../utils/response-utils.js";
+
+import { logger } from "../utils/logger.js";
 
 /**
  * DocumentTools provides high-level operations for document management through RTC infrastructure
@@ -113,14 +116,20 @@ export class DocumentTools {
         },
       );
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(documents, null, 2),
-          },
-        ],
-      };
+      const message = `Found ${documents.length} documents in the specified path. Ready for document operations and RTC session management.`;
+
+      const nextSteps = [
+        "Select a document for reading or editing",
+        "Use get_document_info for detailed information",
+        "Create new documents if needed",
+      ];
+
+      return createSuccessResult(
+        "list_documents",
+        message,
+        { documents },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(`Failed to list documents from ${path || "root"}`, error);
       throw new Error(
@@ -221,14 +230,24 @@ export class DocumentTools {
         );
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Successfully created document at ${path}`,
-          },
-        ],
+      const message = `Successfully created document at '${path}'. Ready for content editing and RTC session creation.`;
+
+      const nextSteps = [
+        "Add content to the document",
+        "Open the document in JupyterLab to start working",
+        "Begin collaborative editing once RTC session is established",
+      ];
+
+      const result = {
+        path: path,
+        type: documentType,
+        size: content ? content.length : 0,
+        urls: {
+          document: `${this.jupyterAdapter.baseUrl}/edit/${path}`,
+        },
       };
+
+      return createSuccessResult("create_document", message, result, nextSteps);
     } catch (error) {
       logger.error(
         `Failed to create document at ${path}. Document type: ${type || "markdown"}`,
@@ -421,14 +440,20 @@ export class DocumentTools {
         );
       }
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Successfully deleted document at ${path}`,
-          },
-        ],
-      };
+      const message = `Successfully deleted document at '${path}'. Document is permanently removed from the server.`;
+
+      const nextSteps = [
+        "Create a new document if needed to replace the deleted one",
+        "Update any references to the deleted document",
+        "Verify that dependent files are still functional",
+      ];
+
+      return createSuccessResult(
+        "delete_document",
+        message,
+        { path },
+        nextSteps,
+      );
     } catch (error) {
       logger.error(`Failed to delete document at ${path}`, error);
       throw new Error(

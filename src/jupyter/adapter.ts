@@ -13,6 +13,7 @@ import { Cookie, CookieJar } from "tough-cookie";
 
 import { NotebookSession } from "./notebook-session.js";
 import { TextDocumentSession } from "./textdoc-session.js";
+import { createSuccessResult } from "../utils/response-utils.js";
 
 import { logger } from "../utils/logger.js";
 
@@ -368,22 +369,24 @@ export class JupyterLabAdapter {
       await sessionToClose.disconnect();
       this.documentSessions.delete(sessionFileId!);
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                path: params.path,
-                status: "disconnected",
-                message: "RTC session ended successfully",
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const message = `✅ Successfully ended RTC session for notebook '${params.path}'. Resources have been cleaned up and session is now disconnected.`;
+
+      const nextSteps = [
+        "Create a new session if you need to work with this notebook again",
+        "Check other active sessions for continued collaboration",
+        "Monitor system resources after session cleanup",
+      ];
+
+      return createSuccessResult(
+        "end_nb_session",
+        message,
+        {
+          path: params.path,
+          status: "disconnected",
+          session_ended: true,
+        },
+        nextSteps,
+      );
     } else {
       return {
         content: [
@@ -430,40 +433,44 @@ export class JupyterLabAdapter {
       await sessionToClose.disconnect();
       this.notebookSessions.delete(sessionFileId!);
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                path: params.path,
-                status: "disconnected",
-                message: "RTC session ended successfully",
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const message = `✅ Successfully ended RTC session for notebook '${params.path}'. Resources have been cleaned up and session is now disconnected.`;
+
+      const nextSteps = [
+        "Create a new session if you need to work with this notebook again",
+        "Check other active sessions for continued collaboration",
+        "Monitor system resources after session cleanup",
+      ];
+
+      return createSuccessResult(
+        "end_nb_session",
+        message,
+        {
+          path: params.path,
+          status: "disconnected",
+          session_ended: true,
+        },
+        nextSteps,
+      );
     } else {
       logger.info(`No matching session found for path ${params.path}`);
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                path: params.path,
-                status: "not_found",
-                message: "No active RTC session found for this notebook",
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      const message = `ℹ️ No active RTC session found for notebook '${params.path}'. The notebook may not have an active session or the path may be incorrect.`;
+
+      const nextSteps = [
+        "Verify the notebook path is correct",
+        "Check if the notebook has an active session using query_nb_sessions",
+        "Create a new session if needed for collaboration",
+      ];
+
+      return createSuccessResult(
+        "end_nb_session",
+        message,
+        {
+          path: params.path,
+          status: "not_found",
+          session_ended: false,
+        },
+        nextSteps,
+      );
     }
   }
 

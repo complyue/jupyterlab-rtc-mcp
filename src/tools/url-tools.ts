@@ -1,5 +1,7 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { JupyterLabAdapter } from "../jupyter/adapter.js";
+import { createSuccessResult } from "../utils/response-utils.js";
+
 import { logger } from "../utils/logger.js";
 
 /**
@@ -25,20 +27,19 @@ export class URLTools {
       // Access the private baseUrl property from the adapter
       const baseUrl = this.jupyterAdapter.baseUrl;
 
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                base_url: baseUrl,
-              },
-              null,
-              2,
-            ),
-          },
+      const result = createSuccessResult(
+        "get_base_url",
+        `🌐 Successfully retrieved JupyterLab base URL. Server ready for notebook operations.`,
+        { base_url: baseUrl },
+        [
+          "Use nb_path_from_url to extract notebook paths from full URLs",
+          "Use this base URL to construct full notebook URLs for sharing",
         ],
-      };
+        undefined, // sessionId
+        [], // warnings
+      );
+
+      return result;
     } catch (error) {
       logger.error("Failed to get base URL:", error);
       throw new Error(
@@ -145,22 +146,99 @@ export class URLTools {
         throw new Error(`Failed to decode URL path: ${pathPart}`);
       }
 
-      return {
-        content: [
+      // Check if the notebook exists and get RTC session status
+      let notebookExists = false;
+      let rtcSession = "absent";
+      let directory = "";
+      let filename = "";
+      let notebookUrl = "";
+
+      try {
+        const { ServerConnection } = await import("@jupyterlab/services");
+        const { URLExt } = await import("@jupyterlab/coreutils");
+
+        const settings = ServerConnection.makeSettings({
+          baseUrl: this.jupyterAdapter.baseUrl,
+        });
+
+        const contentsUrl = URLExt.join(
+          settings.baseUrl,
+          "/api/contents",
+          URLExt.encodeParts(decodedPath),
+        );
+
+        const response = await this.jupyterAdapter.makeJupyterRequest(
+          contentsUrl,
           {
-            type: "text",
-            text: JSON.stringify(
-              {
-                original_url: url,
-                base_url: baseUrl,
-                notebook_path: decodedPath,
-              },
-              null,
-              2,
-            ),
+            method: "GET",
           },
-        ],
-      };
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.type === "notebook") {
+            notebookExists = true;
+            // Check for active RTC session
+            const session = this.jupyterAdapter.getNotebookSession(data.path);
+            if (session && session.isConnected()) {
+              rtcSession = "present";
+            }
+            // Extract directory and filename
+            const pathParts = decodedPath.split("/");
+            filename = pathParts.pop() || "";
+            directory = pathParts.join("/");
+            notebookUrl = `${baseUrl}/notebooks/${decodedPath}`;
+          }
+        }
+      } catch (error) {
+        logger.warn(
+          `Failed to check notebook existence for ${decodedPath}:`,
+          error,
+        );
+        // Continue with the operation even if we can't check existence
+      }
+
+      const message = notebookExists
+        ? `🔗 Successfully extracted notebook path '${decodedPath}' from the provided JupyterLab URL. RTC session is ${rtcSession} for real-time collaboration.`
+        : `🔗 Successfully extracted notebook path '${decodedPath}' from the provided JupyterLab URL. Notebook may not exist or is inaccessible.`;
+
+      const nextSteps = notebookExists
+        ? rtcSession === "present"
+          ? [
+              "Use read_nb_cells to examine the notebook content",
+              "Use get_nb_stat to check kernel and cell information",
+              "Modify cells with immediate collaboration visibility",
+            ]
+          : [
+              "Use read_nb_cells to examine the notebook content",
+              "Use get_nb_stat to check kernel and cell information",
+              "Assign a kernel to start an RTC session for collaboration",
+            ]
+        : [
+            "Verify the notebook path exists",
+            "Use list_nbs to find available notebooks",
+            "Create the notebook if it doesn't exist",
+          ];
+
+      const result = createSuccessResult(
+        "nb_path_from_url",
+        message,
+        {
+          original_url: url,
+          base_url: baseUrl,
+          notebook_path: decodedPath,
+          directory,
+          filename,
+          notebook_exists: notebookExists,
+          rtc_session: rtcSession,
+          url: notebookUrl,
+        },
+        nextSteps,
+        undefined, // sessionId
+        [], // warnings
+      );
+
+      return result;
     } catch (error) {
       logger.error("Failed to extract notebook path from URL:", error);
       throw new Error(
