@@ -109,7 +109,17 @@ export class JupyterLabMCPServer {
           ),
       },
       async ({ root_path }) => {
-        return await this.jupyterAdapter.queryNotebookSessions({ root_path });
+        const sessions = this.jupyterAdapter.listCurrNotebookSessions(
+          root_path || "",
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(sessions, null, 2),
+            },
+          ],
+        };
       },
     );
 

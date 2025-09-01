@@ -340,10 +340,9 @@ export class NotebookTools {
         collaborators?: CollaboratorInfo[];
       }
     | undefined {
-    // Check if there's an active notebook session for this path
-    const notebookSession = this.jupyterAdapter.getNotebookSession(path);
-
-    if (notebookSession) {
+    for (const notebookSession of this.jupyterAdapter.listCurrNotebookSessions(
+      path,
+    )) {
       const sessionInfo = notebookSession.session;
       return {
         session_id: sessionInfo.sessionId,
@@ -354,7 +353,6 @@ export class NotebookTools {
         // collaborators: this._getCollaborators(notebookSession),
       };
     }
-
     return undefined;
   }
 

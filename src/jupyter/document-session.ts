@@ -12,6 +12,7 @@ export interface ISessionModel {
   type: string;
   fileId: string;
   sessionId: string;
+  docpath: string;
 }
 
 /**
@@ -43,6 +44,13 @@ export abstract class DocumentSession {
   }
   get session() {
     return this._session;
+  }
+
+  /**
+   * Get the document path
+   */
+  get docpath(): string {
+    return this._session.docpath;
   }
 
   /**

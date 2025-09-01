@@ -21,6 +21,7 @@ export interface ISessionModel {
   type: string;
   fileId: string;
   sessionId: string;
+  docpath: string;
 }
 
 class CookieManager {
@@ -187,6 +188,26 @@ export class JupyterLabAdapter {
    */
   getNotebookSession(fileId: string): NotebookSession | undefined {
     return this.notebookSessions.get(fileId);
+  }
+
+  listCurrNotebookSessions(pathPrefix: string): NotebookSession[] {
+    const sessions: NotebookSession[] = [];
+    for (const session of this.notebookSessions.values()) {
+      if (session.session.docpath.startsWith(pathPrefix)) {
+        sessions.push(session);
+      }
+    }
+    return sessions;
+  }
+
+  listCurrTextDocSessions(pathPrefix: string): TextDocumentSession[] {
+    const sessions: TextDocumentSession[] = [];
+    for (const session of this.documentSessions.values()) {
+      if (session.session.docpath.startsWith(pathPrefix)) {
+        sessions.push(session);
+      }
+    }
+    return sessions;
   }
 
   /**
@@ -451,243 +472,6 @@ export class JupyterLabAdapter {
   }
 
   /**
-   * Query the status of an RTC session for a document
-   * @param params Parameters for querying session status
-   * @returns MCP response with session status
-   */
-  async queryDocumentSession(params: {
-    path: string;
-  }): Promise<CallToolResult> {
-    // Find the session for this document
-    let foundSession = null;
-    for (const [, session] of this.documentSessions) {
-      const sessionInfo = session.session;
-      if (
-        sessionInfo.fileId === params.path ||
-        sessionInfo.fileId.endsWith(params.path)
-      ) {
-        foundSession = session;
-        break;
-      }
-    }
-
-    if (foundSession) {
-      const sessionInfo = foundSession.session;
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                path: params.path,
-                session_id: sessionInfo.sessionId,
-                file_id: sessionInfo.fileId,
-                connected: foundSession.isConnected(),
-                synced: foundSession.isSynced(),
-                message: "RTC session found",
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    } else {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                path: params.path,
-                status: "not_found",
-                message: "No active RTC session found",
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-  }
-
-  /**
-   * Query the status of an RTC session for a notebook
-   * @param params Parameters for querying session status
-   * @returns MCP response with session status
-   */
-  async queryNotebookSession(params: {
-    path: string;
-  }): Promise<CallToolResult> {
-    // Find the session for this notebook
-    let foundSession = null;
-    for (const [, session] of this.notebookSessions) {
-      const sessionInfo = session.session;
-      if (
-        sessionInfo.fileId === params.path ||
-        sessionInfo.fileId.endsWith(params.path)
-      ) {
-        foundSession = session;
-        break;
-      }
-    }
-
-    if (foundSession) {
-      const sessionInfo = foundSession.session;
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                path: params.path,
-                session_id: sessionInfo.sessionId,
-                file_id: sessionInfo.fileId,
-                connected: foundSession.isConnected(),
-                synced: foundSession.isSynced(),
-                message: "RTC session found",
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    } else {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(
-              {
-                path: params.path,
-                status: "not_found",
-                message: "No active RTC session found",
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    }
-  }
-
-  /**
-   * Query the status of RTC sessions for notebooks in a directory
-   * @param params Parameters for querying session status
-   * @returns MCP response with session status information
-   */
-  async queryNotebookSessions(params: {
-    root_path?: string;
-  }): Promise<CallToolResult> {
-    const { ServerConnection } = await import("@jupyterlab/services");
-    const { URLExt } = await import("@jupyterlab/coreutils");
-
-    const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
-    const rootPath = params.root_path || "";
-    const url = URLExt.join(
-      settings.baseUrl,
-      "/api/contents",
-      URLExt.encodeParts(rootPath),
-    );
-
-    const init: RequestInit = {
-      method: "GET",
-    };
-
-    const response = await this.makeJupyterRequest(url, init);
-
-    let dataText: string = await response.text();
-    let data = null;
-
-    if (dataText.length > 0) {
-      try {
-        data = JSON.parse(dataText);
-      } catch {
-        logger.error("Not a JSON response body.", response);
-      }
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        `Server returned ${response.status}: ${data && typeof data === "object" && "message" in data ? (data as { message: string }).message : dataText}`,
-      );
-    }
-
-    // Get all notebooks in the directory
-    const notebooks = this._extractNotebooks(data);
-
-    // Check each notebook for an active session
-    const sessions = [];
-    let activeSessions = 0;
-
-    for (const notebook of notebooks) {
-      let foundSession = null;
-      for (const [, session] of this.notebookSessions) {
-        const sessionInfo = session.session;
-        if (
-          sessionInfo.fileId === notebook.path ||
-          sessionInfo.fileId.endsWith(notebook.path)
-        ) {
-          foundSession = session;
-          break;
-        }
-      }
-
-      if (foundSession) {
-        const sessionInfo = foundSession.session;
-
-        if (foundSession.isConnected()) {
-          activeSessions++;
-        }
-
-        sessions.push({
-          path: notebook.path,
-          session_id: sessionInfo.sessionId,
-          file_id: sessionInfo.fileId,
-          connected: foundSession.isConnected(),
-          synced: foundSession.isSynced(),
-          message: foundSession.isConnected()
-            ? "RTC session is active"
-            : "RTC session ended",
-        });
-      } else {
-        sessions.push({
-          path: notebook.path,
-          session_id: "",
-          file_id: "",
-          status: "not_found",
-          cell_count: 0,
-          last_activity: null,
-          message: "No active RTC session found for this notebook",
-        });
-      }
-    }
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              root_path: rootPath,
-              sessions,
-              total_sessions: sessions.length,
-              active_sessions: activeSessions,
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-    };
-  }
-
-  /**
    * Make an HTTP request to JupyterLab with proper authentication and headers
    * @param url URL to request
    * @param init Request initialization options
@@ -734,10 +518,7 @@ export class JupyterLabAdapter {
    * @param type Document type
    * @returns Promise that resolves to a session model
    */
-  private async requestDocSession(
-    path: string,
-    type: string,
-  ): Promise<ISessionModel> {
+  async requestDocSession(path: string, type: string): Promise<ISessionModel> {
     const settings = ServerConnection.makeSettings({ baseUrl: this.baseUrl });
     let url = URLExt.join(
       settings.baseUrl,
@@ -769,82 +550,11 @@ export class JupyterLabAdapter {
       );
     }
 
-    return data as ISessionModel;
-  }
+    // Add the original path to the session model
+    const sessionModel = data as ISessionModel;
+    sessionModel.docpath = path;
 
-  /**
-   * Extract notebook files from JupyterLab contents API response
-   * @param contents Contents API response
-   * @returns Array of notebook objects
-   */
-  private _extractNotebooks(contents: {
-    type: string;
-    content?: unknown[];
-    path?: string;
-    name?: string;
-    last_modified?: string;
-    created?: string;
-    size?: number;
-    writable?: boolean;
-  }): Array<{
-    path: string;
-    name: string;
-    last_modified?: string;
-    created?: string;
-    size?: number;
-    writable?: boolean;
-  }> {
-    const notebooks: Array<{
-      path: string;
-      name: string;
-      last_modified?: string;
-      created?: string;
-      size?: number;
-      writable?: boolean;
-    }> = [];
-
-    if (contents.type === "directory") {
-      // Recursively process directory contents
-      if (contents.content) {
-        for (const item of contents.content) {
-          const typedItem = item as {
-            type: string;
-            content?: unknown[];
-            path?: string;
-            name?: string;
-            last_modified?: string;
-            created?: string;
-            size?: number;
-            writable?: boolean;
-          };
-
-          if (typedItem.type === "directory") {
-            notebooks.push(...this._extractNotebooks(typedItem));
-          } else if (typedItem.type === "notebook") {
-            notebooks.push({
-              path: typedItem.path || "",
-              name: typedItem.name || "",
-              last_modified: typedItem.last_modified,
-              created: typedItem.created,
-              size: typedItem.size,
-              writable: typedItem.writable,
-            });
-          }
-        }
-      }
-    } else if (contents.type === "notebook") {
-      // Single notebook file
-      notebooks.push({
-        path: contents.path!,
-        name: contents.name!,
-        last_modified: contents.last_modified,
-        created: contents.created,
-        size: contents.size,
-        writable: contents.writable,
-      });
-    }
-
-    return notebooks;
+    return sessionModel;
   }
 
   /**

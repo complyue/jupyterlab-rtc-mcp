@@ -1041,7 +1041,15 @@ export class DocumentTools {
    */
   async queryDocumentSession(path: string): Promise<CallToolResult> {
     try {
-      return await this.jupyterAdapter.queryDocumentSession({ path });
+      const sessions = this.jupyterAdapter.listCurrTextDocSessions(path);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(sessions, null, 2),
+          },
+        ],
+      };
     } catch (error) {
       logger.error(`Failed to query document session for ${path}`, error);
       throw new Error(
